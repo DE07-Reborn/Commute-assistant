@@ -1,6 +1,8 @@
-apache-airflow-providers-apache-spark
-apache-airflow-providers-amazon
+apache-airflow-providers-apache-spark==4.4.0
+apache-airflow-providers-amazon==8.12.0
 
-dbt-core==1.8.4
-dbt-redshift==1.8.4
-astronomer-cosmos==1.7.2
+dbt-core==1.8.7
+dbt-redshift==1.8.1
+astronomer-cosmos==1.7.1
+
+psycopg2-binary==2.9.9
