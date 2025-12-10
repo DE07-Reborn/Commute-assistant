@@ -1,4 +1,4 @@
-name: Project CI with uv
+name: Project CI 
 
 on:
   push:

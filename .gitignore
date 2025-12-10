@@ -205,3 +205,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Airflow logs and data
+src/airflow/logs/
+src/airflow/dags/dbt/logs/
+src/airflow/data/

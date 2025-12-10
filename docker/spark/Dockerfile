@@ -4,8 +4,13 @@ USER root
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    wget \
+    gnupg \
     gcc \
-    librdkafka-dev \
+    && wget -qO - https://packages.confluent.io/deb/7.6/archive.key | apt-key add - \
+    && echo "deb https://packages.confluent.io/deb/7.6 stable main" > /etc/apt/sources.list.d/confluent.list \
+    && apt-get update \
+    && apt-get install -y librdkafka-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /requirements.txt
