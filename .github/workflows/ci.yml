@@ -1,0 +1,53 @@
+name: Project CI with uv
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - src/**
+      - tests/**
+      - requirements.txt
+      - docker/**
+      - docker-compose.yaml
+      - .github/workflows/ci.yml
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - src/**
+      - tests/**
+      - requirements.txt
+      - docker/**
+      - docker-compose.yaml
+      - .github/workflows/ci.yml
+
+jobs:
+  ci-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint
+        run: |
+          ruff src tests
+
+      - name: Run tests
+        run: |
+          pytest -q
+
+      - name: Build Airflow image
+        run: docker build -t data-platform-airflow ./docker/airflow
+
+      - name: Build Spark image
+        run: docker build -t data-platform-spark ./docker/spark
