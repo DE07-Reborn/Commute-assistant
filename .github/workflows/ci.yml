@@ -24,6 +24,9 @@ jobs:
   ci-test:
     runs-on: ubuntu-latest
 
+    env:
+      PYTHONPATH: src
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -44,7 +47,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest -q
+          pytest -vv --disable-warnings
 
   
   docker-build:
