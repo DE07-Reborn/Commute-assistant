@@ -62,9 +62,10 @@ class s3_util:
         input_fmt = input_type.lower()
 
         if input_fmt not in supported_formats:
-            logging.info(f'Input Type not supported : {input_type}. '
-                        f'Should be one of {supported_formats}')
-            raise ValueError(f"Unsupported input type: {input_type}")
+            raise ValueError(
+                f"Unsupported input type: {input_type}. "
+                f"Supported: {supported_formats}"
+            )
 
         # get read all data within path and format
         if input_fmt == "json":
@@ -86,11 +87,10 @@ class s3_util:
             return table
         
         else:
-            logging.info(
-                f'Return Type not supported : {return_type}. '
-                f'Should be arrow_table or spark_df'
+            raise ValueError(
+                f"Unsupported return type: {return_type}. "
+                "Supported: pandas_df, arrow_table"
             )
-            raise ValueError(f"Unsupported return type: {return_type}")
 
 
 
@@ -106,8 +106,9 @@ class s3_util:
             elif isinstance(data, list):
                 return pd.json_normalize(data)
             else:
-                logging.info("Cannot convert format fit to pandas_df")
-                raise ValueError("Cannot convert format fit to pandas_df")
+                raise ValueError(
+                    f"JSON data type {type(data)} cannot be converted to pandas_df"
+                )
 
         # arrow table
         if return_type == "arrow_table":
@@ -115,7 +116,8 @@ class s3_util:
                 data = [data]
             return pa.Table.from_pylist(data)
 
-        raise ValueError(f"Unsupported return type for JSON: {return_type}")
+        logging.error(f"Unsupported return type for JSON: {return_type}")
+        raise 
 
 
 
@@ -138,8 +140,8 @@ class s3_util:
             return self._upload_json(data, folder)
 
         else:
-            logging.info(f'Unsupported data type : {type(data)}')
-            raise ValueError(f"Unsupported data type: {type(data)}")
+            logging.error(f'Unsupported data type : {type(data)}')
+            raise 
 
 
 
@@ -169,8 +171,8 @@ class s3_util:
             buffer = io.BytesIO(csv_str.encode('utf-8'))
 
         else:
-            logging.info(f'Unsupported pandas format: {format}')
-            raise ValueError('Unsupported pandas format')
+            logging.error(f'Unsupported pandas format: {format}')
+            raise 
         
         # Load into S3
         return self._put_object(buffer, key)
