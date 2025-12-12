@@ -6,3 +6,7 @@ dbt-redshift==1.8.1
 astronomer-cosmos==1.7.1
 
 psycopg2-binary==2.9.9
+
+# Data frame-> df/parquet
+pandas == 2.2.2
+pyarrow == 15.0.2
