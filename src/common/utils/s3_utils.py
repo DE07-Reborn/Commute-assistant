@@ -74,6 +74,25 @@ class s3_util:
 
         # get read all data within path and format
         s3_uri = f"s3://{self.bucket}/{path}"
+
+        if input_fmt == 'json':
+            obj = self.s3.get_object(Bucket=self.bucket, Key=path)
+            body = obj["Body"].read().decode("utf-8")
+            data = json.loads(body)
+
+            if return_type == "pandas_df":
+                return pd.json_normalize(data)
+
+            elif return_type == "arrow_table":
+                if isinstance(data, list):
+                    return pa.Table.from_pylist(data)
+                else:
+                    return pa.Table.from_pylist([data])
+
+            else:
+                logging.info(f"Unsupported return type: {return_type} for json")
+                raise ValueError(f"Unsupported return type: {return_type}")
+
         dataset = ds.dataset(
             s3_uri,
             format=input_fmt,

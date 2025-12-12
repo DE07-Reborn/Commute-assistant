@@ -1,10 +1,9 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd
-import pyarrow as pa
-import pyarrow.dataset as ds
-import pyarrow.fs as pa_fs 
+import pyarrow.fs 
 from src.common.utils.s3_utils import s3_util
+import json
 
 
 
@@ -46,6 +45,26 @@ def test_upload_json(util):
 
     assert kwargs['Bucket'] == 'test_bucket'
     assert 'json-data/2025-12-12/1230.json' in kwargs['Key']
+
+
+# -----------------------------------------------------
+# Test: read JSON
+# -----------------------------------------------------
+def test_read_json(util):
+    mock_json = {"x": 10, "y": 20}
+
+    mock_body = MagicMock()
+    mock_body.read.return_value = json.dumps(mock_json).encode("utf-8")
+
+    util.s3.get_object = MagicMock(return_value={"Body": mock_body})
+
+    df = util.read("json-folder/data.json", input_type="json", return_type="pandas_df")
+
+    assert df.iloc[0]["x"] == 10
+    assert df.iloc[0]["y"] == 20
+
+    util.s3.get_object.assert_called_once_with(Bucket="test_bucket", Key="json-folder/data.json")
+
 
 
 # -----------------------------------------------------
