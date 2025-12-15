@@ -169,7 +169,7 @@ def test_preprocessing_kma_daily_weather_imputation():
     preprocessor = Preprocessing()
     result = preprocessor.preprocessing_kma_daily_weather(df)
 
-    assert result[temp := '평균기온'].isna().all()
+    assert result['평균기온'].isna().all()
     assert result['강수량'].isna().all()
     assert pd.isna(result.loc[0, '체감온도'])
     assert pd.isna(result.loc[0, '불쾌지수'])
