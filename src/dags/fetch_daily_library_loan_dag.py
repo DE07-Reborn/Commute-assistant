@@ -1,7 +1,6 @@
 # Library
 # python tools
-import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 import pendulum
 
 # Airflow
