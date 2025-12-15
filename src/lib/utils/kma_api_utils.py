@@ -86,7 +86,7 @@ class Kma_api_collector:
             logging.error(f"KMA API HTTP error: {exc}")
             raise
 
-        except Exception as e:
+        except Exception:
             logging.exception("Unexpected error caught while requesting KMA API")
             raise
 
@@ -153,7 +153,7 @@ class Kma_api_collector:
             logging.error(f"KMA API HTTP error: {exc}")
             raise
 
-        except Exception as e:
+        except Exception:
             logging.exception("Unexpected error caught while requesting KMA API")
             raise
 
