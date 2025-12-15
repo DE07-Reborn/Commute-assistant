@@ -14,7 +14,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -206,7 +205,5 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Airflow logs and data
-src/airflow/logs/
-src/airflow/dags/dbt/logs/
-src/airflow/data/
+# Airflow logs
+src/logs/

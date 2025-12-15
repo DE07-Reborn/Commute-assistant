@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock
 import pandas as pd
 import json
 
-from src.common.utils.s3_utils import s3_util
+from src.lib.utils.s3_utils import S3_utils
 
 
 # -----------------------------------------------------
@@ -15,11 +15,11 @@ def sample_df():
 
 
 @pytest.fixture
-@patch("src.common.utils.s3_utils.boto3.client")
+@patch("src.lib.utils.s3_utils.boto3.client")
 def util(mock_boto_client):
     mock_s3 = MagicMock()
     mock_boto_client.return_value = mock_s3
-    return s3_util(ymd='2025-12-12', hm='1230', bucket='test_bucket')
+    return S3_utils(ymd='2025-12-12', hm='1230', bucket='test_bucket')
 
 
 # -----------------------------------------------------
