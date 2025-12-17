@@ -15,21 +15,20 @@ S3_PATH = "raw_data/music"
 S3_MUSIC_DATA_NAME = "music_origin_data"
 S3_MUSIC_RESULT_DATA_NAME = "music_classified"
 
-
-# 목적한 날짜와 시간의 데이터가 없을 때 발생시킬 오류
-class DataNotFoundException(AirflowException):
-    pass
-
-
-# S3 조회에 실패할 경우 발생시킬 오류
-class S3CheckError(AirflowException):
-    pass
-
-
 def bring_data_from_s3(bucket_name, bucket_path, music_data_name, **context):
-    s3 = Basic_s3_utils(bucket=bucket_name)
-    file_path = bucket_path + '/' + music_data_name
-    df = s3.read(path=file_path)
+    try:
+        s3 = Basic_s3_utils(bucket=bucket_name)
+        file_path = bucket_path + '/' + music_data_name
+        df = s3.read(path=file_path)
+    except Exception as e:
+        raise RuntimeError(f"S3에서 데이터를 읽는 중 오류 발생: {e}")
+
+    if df is None or df.empty:
+        raise ValueError("S3에서 가져온 데이터가 비어 있습니다.")
+
+    required_cols = {"tempo", "energy", "popularity"}
+    if not required_cols.issubset(df.columns):
+        raise KeyError(f"필수 컬럼 {required_cols}이 누락되었습니다.")
 
     context['ti'].xcom_push(key="raw_df", value=df.to_json())
 
@@ -38,6 +37,9 @@ def music_data_classification(**context):
     df = pd.read_json(StringIO(raw_json))
 
     # tempo 기준 6개로 분할
+    if len(df) < 6:
+        raise ValueError("tempo 그룹을 나눌 수 있을 만큼 데이터가 충분하지 않습니다.")
+
     df_sorted = df.sort_values('tempo').reset_index(drop=True)
     df_sorted['tempo_group'] = (df_sorted.index // (len(df) // 6)) + 1
 
@@ -45,7 +47,12 @@ def music_data_classification(**context):
     sorted_dfs = {}
 
     for n in range(1, 7):
-        sorted_dfs[n] = df_sorted[df_sorted['tempo_group'] == n].sort_values('energy', ascending=False).reset_index(drop=True)
+        group_df = df_sorted[df_sorted['tempo_group'] == n]
+
+        if len(group_df) < 16:
+            raise ValueError(f"tempo 그룹 {n}에서 energy 그룹을 나눌 수 없습니다.")
+
+        sorted_dfs[n] = group_df.sort_values('energy', ascending=False).reset_index(drop=True)
         sorted_dfs[n]['energy_group'] = (sorted_dfs[n].index // (len(sorted_dfs[n]) // 16)) + 1
     
     result_df = pd.concat(sorted_dfs.values(), ignore_index=True)
@@ -54,17 +61,20 @@ def music_data_classification(**context):
 def music_classification_result_load(bucket_name, load_path, music_data_result_name, **context):
     classified_json = context['ti'].xcom_pull(task_ids="music_data_classification", key="classified_df")
     df = pd.read_json(StringIO(classified_json)).sort_values(by=['tempo_group', 'energy_group', 'popularity'], ascending=[True, True, False])
-    file_path = load_path + music_data_result_name
 
-    s3 = Basic_s3_utils(bucket=bucket_name)
-    s3.upload(data=df, path=load_path, file_name=music_data_result_name)
+    try:
+        s3 = Basic_s3_utils(bucket=bucket_name)
+        s3.upload(data=df, path=load_path, file_name=music_data_result_name)
+    except Exception as e:
+        raise RuntimeError(f"S3에 결과 데이터를 업로드하는 중 오류 발생: {e}")
+
 
 with DAG(
     dag_id="music_classification_dag",
     start_date=datetime(2025, 12, 15),
     schedule_interval="@once",
     catchup=False,
-    tags=["s3", "ELT", "music"],
+    tags=["s3", "classification", "music"],
     default_args={
         "owner": "airflow",
         "depends_on_past": False,
