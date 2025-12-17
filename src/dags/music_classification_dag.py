@@ -3,7 +3,6 @@ from io import StringIO
 import pandas as pd
 
 from airflow import DAG
-from airflow.exceptions import AirflowException
 from airflow.operators.python import PythonOperator
 from utils.basic_s3_utils import Basic_s3_utils
 
