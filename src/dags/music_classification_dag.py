@@ -1,14 +1,11 @@
-import logging
-from datetime import UTC, datetime, timedelta
-from io import BytesIO, StringIO
+from datetime import datetime, timedelta
+from io import StringIO
 import pandas as pd
 
 from airflow import DAG
 from airflow.exceptions import AirflowException
 from airflow.operators.python import PythonOperator
 from utils.basic_s3_utils import Basic_s3_utils
-
-log = logging.getLogger(__name__)
 
 S3_BUCKET = "commute-test-bucket"
 S3_PATH = "raw_data/music"
