@@ -1,5 +1,4 @@
 import os, boto3, logging, io
-import pandas as pd
 
 
 class S3_utils:
@@ -39,12 +38,10 @@ class S3_utils:
                 df : stn meta data frame
         """
 
-        filepath = 'stn-metadata'
-
         try:
             df_csv = df.to_csv(index=False)
             buffer = io.BytesIO(df_csv.encode('utf-8'))
-            key = f'stn-metadata/metadata.csv'
+            key = 'stn-metadata/metadata.csv'
 
             self._put_object(buffer, key)
         except Exception as e:
@@ -65,7 +62,7 @@ class S3_utils:
         logging.info(f'Uploading to S3 s3://{self.bucket}/{key}')
         buffer.seek(0)
 
-        response = self.s3.put_object(
+        self.s3.put_object(
             Bucket=self.bucket,
             Key=key,
             Body=buffer.getvalue()

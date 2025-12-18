@@ -1,4 +1,6 @@
-import os, logging, requests
+import os
+import logging
+import requests
 import pandas as pd
 from collections import defaultdict
 

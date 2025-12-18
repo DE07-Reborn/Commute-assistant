@@ -5,7 +5,8 @@ from utils.preprocessing_utils import Preprocessing
 from utils.kma_api_tool_utils import Kma_api_collector
 from utils.kafka_utils import Kafka_producer_utils
 
-import pendulum, logging
+import pendulum
+import logging
 from datetime import timedelta
 
 def request_and_send_api(**context):

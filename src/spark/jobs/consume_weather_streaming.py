@@ -5,7 +5,8 @@ from pyspark.sql.functions import (
     to_json, struct
 )
 from pyspark.sql.types import StructType, StructField, StringType
-import logging, os
+import logging
+import os
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("weather-streaming")
@@ -80,7 +81,9 @@ def main():
         .withColumn("hm", col('fields')[13].cast('double')) # 상대습도
         .withColumn("rn", col('fields')[15].cast('double')) # 강수량
         .withColumn("sd_tot", col('fields')[21].cast('double')) # 신적설
+        .withColumn('wc', col('fields')[22].cast('int')) # GT 현재일기
         .withColumn("ca_tot", col('fields')[25].cast('int')) # 하늘상태
+        
     )
 
     # Imputation
@@ -95,17 +98,12 @@ def main():
         .withColumn("ta", when(col("ta").isin(-9, -99), lit(None)).otherwise(col("ta")))
         .withColumn("hm", when(col("hm").isin(-9, -99), lit(None)).otherwise(col("hm")))
         .withColumn("ca_tot", when(col("ca_tot").isin(-9, -99), lit(None)).otherwise(col("ca_tot")))
+        .withColumn('wc', when(col('wc').isin(-9, -99), lit(None)).otherwise(col('wc')))
     )
 
     # Create new columns
     df_parsed = (
         df_clean
-        .withColumn(
-            "pty",
-            when((col("rn") > 0) & (col("sd_tot") > 0), lit("Snow"))
-            .when(col("rn") > 0, lit("Rain"))
-            .otherwise(lit(None))
-        ) # 강수형태
         .withColumn(
             "pop",
             when(col("rn") > 0, lit(1)).otherwise(lit(0))
@@ -129,12 +127,12 @@ def main():
             "obs_time", "obs_ts", "obs_yyyymmddhh",
             "stn_id",
             "ws", "ta", "hm", "rn", "sd_tot",
-            "pty", "pop", "sky"
+            "wc", "pop", "sky"
         )
     )
 
     # Save into s3
-    s3_query = (
+    (
         df_final
         .writeStream
         .format("parquet")
@@ -153,7 +151,7 @@ def main():
         )
     )
 
-    kafka_query = (
+    (
         kafka_out_df
         .writeStream
         .format("kafka")
