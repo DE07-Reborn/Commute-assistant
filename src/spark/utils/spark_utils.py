@@ -5,7 +5,6 @@ from pyspark.sql.functions import (
 )
 
 import redis
-import json
 import logging
 
 from pyspark.sql.types import StructType, StructField, StringType
