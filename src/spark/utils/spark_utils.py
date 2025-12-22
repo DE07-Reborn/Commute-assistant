@@ -17,9 +17,6 @@ class Spark_utils:
 
     def __init__(self):
         self.bucket = os.getenv("AWS_S3_BUCKET")
-        # s3 데이터를 가져오기 위한 ACCESS_KEY 설정
-        self.access_key = os.getenv("AWS_ACCESS_KEY_ID")        
-        self.secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")        
         if not self.bucket:
             raise RuntimeError("AWS_S3_BUCKET env var is required")
         
@@ -44,11 +41,6 @@ class Spark_utils:
             .config("spark.hadoop.fs.s3a.aws.credentials.provider", 
                     "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
             .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-            # s3에서 데이터를 불러오기 위한 설정
-            .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-            .config("spark.hadoop.fs.s3a.access.key", self.access_key)
-            .config("spark.hadoop.fs.s3a.secret.key", self.secret_access_key)
-            .config("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com")
             .config("spark.redis.host", self.redis_host)
             .config("spark.redis.port", str(self.redis_port)) 
             .getOrCreate()
@@ -233,22 +225,6 @@ class Spark_utils:
         except Exception as e:
             self.log.error(f"Batch {batch_id}: Redis batch write error: {e}")
             raise
-        
-    def write_df_to_redis(self, df, redis_host='redis', redis_port=6379):
-        """
-            For each partition in dataframe, save it into redis
-            parmam
-                df : DataFrame
-                redis_host : host name of redis
-                redis_port : port number of redis
-        """
-        df.foreachPartition(
-            lambda partition : self.save_partition_to_redis(
-                partition=partition, 
-                redis_host=redis_host, 
-                redis_port=redis_port
-            )
-        )
 
     def weather_to_class(self, session, file_path, weather_df):
         weather_df.createOrReplaceTempView("weather_df")
@@ -294,8 +270,3 @@ class Spark_utils:
         """)
 
         return result_df
-
-
-        
-            self.log.error(f"Batch {batch_id}: Redis batch write error: {e}")
-            raise
