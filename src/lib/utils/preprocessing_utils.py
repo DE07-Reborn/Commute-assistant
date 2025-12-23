@@ -1,5 +1,4 @@
 import pendulum
-import pandas as pd
 
 class Preprocessing:
     """
