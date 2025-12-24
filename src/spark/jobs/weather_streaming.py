@@ -26,10 +26,16 @@ def run_weather_stream(spark_utils, spark, music_df):
         how='left'
     )
 
+    br = BookRecommender(
+        spark=spark,
+        bucket=spark_utils.bucket
+    )
+    df_with_recommendation = br.add_recommendation(df_weather)
+
     # Redis Sink
     redis_checkpoint = f"s3a://{spark_utils.bucket}/kma-weather/_checkpoint_redis"
     redis_query = (
-        df_weather
+        df_with_recommendation
         .repartition(1)
         .writeStream
         .foreachBatch(spark_utils.save_batch_to_redis)
@@ -41,7 +47,7 @@ def run_weather_stream(spark_utils, spark, music_df):
     # S3 Sink
     s3_checkpoint = f"s3a://{spark_utils.bucket}/kma-weather/_checkpoint_s3"
     s3_query = (
-        df_weather.writeStream
+        df_with_recommendation.writeStream
         .foreachBatch(spark_utils.save_batch_to_s3)
         .outputMode("append")
         .option("checkpointLocation", s3_checkpoint)
