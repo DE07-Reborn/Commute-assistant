@@ -301,7 +301,16 @@ class Spark_utils:
                         'wc': str(row['wc']) if row['wc'] is not None else '',
                         'pop': str(row['pop']) if row['pop'] is not None else '',
                         'sky': str(row['sky']) if row['sky'] is not None else '',
-                        'music' : row['music_json']
+                        # 음악 추천 결과
+                        'music' : row['music_json'],
+                        # 도서 추천 결과
+                        "book_title": row["title"] or "",
+                        "book_author": row["author"] or "",
+                        "book_genre": row["categoryName"] or "",
+                        "book_description": row["description"] or "",
+                        "book_isbn13": row["ebook_isbn13"] or "",
+                        "book_link": row["ebook_link"] or "",
+                        
                     }
                     
                     # Store in Redis as key : kma-stn:stn_id
@@ -589,6 +598,10 @@ class Spark_utils:
             Save spark dataframe as parquet in s3 folder
         """
         try:
+            if batch_df is None or batch_df.rdd.isEmpty():
+                self.log.info(f"Batch {batch_id}: Empty batch, skip S3 write")
+                return
+            
             s3_path = f"s3a://{self.bucket}/weather-forecast/hourly-data"
             
             self.log.info(f"Batch {batch_id}: Writing records to S3...")
@@ -597,10 +610,11 @@ class Spark_utils:
                 batch_df
                 .write
                 .mode("overwrite")
-                .partitionBy("base_time")
-                .parquet(s3_path)
                 .option("compression", "snappy")
                 .option("maxRecordsPerFile", 20000)
+                .partitionBy("base_time")
+                .parquet(s3_path)
+
             )
             
             self.log.info(f"Batch {batch_id}: Successfully saved records to S3 - {s3_path}")

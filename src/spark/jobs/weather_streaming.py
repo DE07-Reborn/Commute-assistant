@@ -1,4 +1,5 @@
 from spark.utils.spark_utils import Spark_utils
+from spark.utils.book_recommender import BookRecommender
 from pyspark.sql.functions import broadcast
 
 import logging
@@ -26,10 +27,11 @@ def run_weather_stream(spark_utils, spark, music_df):
     )
 
     # Redis Sink
-    df_weather_redis = df_weather.repartition(1)
     redis_checkpoint = f"s3a://{spark_utils.bucket}/kma-weather/_checkpoint_redis"
     redis_query = (
-        df_weather_redis.writeStream
+        df_weather
+        .repartition(1)
+        .writeStream
         .foreachBatch(spark_utils.save_batch_to_redis)
         .outputMode("append")
         .option("checkpointLocation", redis_checkpoint)
