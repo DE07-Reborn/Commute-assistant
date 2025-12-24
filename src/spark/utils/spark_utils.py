@@ -3,7 +3,7 @@ from pyspark.sql.functions import (
     col, split, from_json, regexp_replace, 
     when, lit, to_timestamp, date_format, 
     explode, min, max, avg, struct,
-    collect_list, expr, desc, row_number,
+    collect_list, expr, row_number,
     substring, concat_ws, coalesce, to_json,
     
 )
