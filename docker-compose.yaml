@@ -212,7 +212,7 @@ services:
           --email admin@example.com
     user: "0:0"
 
-  # ---------- Spark worker kma weather streaming ----------
+  # ---------- Spark worker weather streaming ----------
   spark-weather-streaming:
     build:
       context: ./docker/spark
