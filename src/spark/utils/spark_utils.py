@@ -368,6 +368,7 @@ class Spark_utils:
                         # 관측시간(obs_time), 기온(TA), 습도(hm), 현재일기(wc), 강수유무(pop), 하늘상태(sky)
                         'obs_time': row['obs_time'] or '',
                         'ta': str(row['ta']) if row['ta'] is not None else '',
+                        'ws' : str(row['ws']) if row['ws'] is not None else '',
                         'hm': str(row['hm']) if row['hm'] is not None else '',
                         'wc': str(row['wc']) if row['wc'] is not None else '',
                         'pop': str(row['pop']) if row['pop'] is not None else '',
@@ -456,8 +457,6 @@ class Spark_utils:
         weather_df.createOrReplaceTempView("weather_df")
         music_df = session.read.parquet(f"s3a://{self.bucket}/{file_path}")
         music_df.createOrReplaceTempView("music_df")
-
-
 
     # Forecast 
     def preprocessing_weather_forecast(self, raw_data):
