@@ -175,3 +175,21 @@ def get_air(home_address, work_address):
         'work_address' : address_2.split('air:')[1],
         'value_2' : data_2,
     }
+
+
+@app.get("/route")
+def get_route(user_id: str):
+    """
+        Get latest commuting route for user
+        param
+            user_id : User's unique ID
+    """
+    key = f'route:state:{user_id}'
+    data = redis_client.get(key)
+
+    if not data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No route data for user_id={user_id}"
+        )
+    return json.loads(data)
