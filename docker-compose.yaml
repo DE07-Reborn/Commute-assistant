@@ -195,7 +195,6 @@ services:
     restart: always
 
   # ---------- Airflow Init ----------
-  # ---------- Airflow Init ----------
   airflow-init:
     <<: *airflow-common
     container_name: airflow-init
@@ -244,31 +243,37 @@ services:
       - kafka
     restart: always
 
-  
-  # ---------- fastAPI ----------
-  fastapi:
+  # ---------- fastAPI local----------
+  commute_fastapi:
     build:
-      context: ./docker/fastapi/
+      context: ./docker/fastapi
       dockerfile: Dockerfile
-    container_name: fastapi
-    networks:
-      - pipeline-net
-    env_file:
-      - .env
-    volumes:
-      - ./src:/opt/project/src
-    environment:
-      PYTHONPATH: /opt/project/src
-      AWS_REGION: ${AWS_REGION}
-      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-    command: >
-      uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    container_name: commute_fastapi
     ports:
       - "8000:8000"
+    networks:
+      - pipeline-net
     depends_on:
-      - redis-cache
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      DATABASE_URL: ${DATABASE_URL}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
+      POSTGRES_USER: ${APP_DB_USER}
+      POSTGRES_PASSWORD: ${APP_DB_PSWD}
+      POSTGRES_DB: ${APP_DB_NAME}
+      POSTGRES_HOST: ${APP_DB_HOST}
+      POSTGRES_PORT: ${APP_DB_PORT}
+    volumes:
+      - ./fastapi:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 # ----------- redis for cache ------------
   redis-cache:

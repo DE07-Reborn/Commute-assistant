@@ -33,8 +33,8 @@ def request_and_send_api(**context):
     sent_count = 0
     dic = defaultdict(list)
     for address in address_list:
-        address1, address2 = address.split()
-        nx, ny = processor.match_coordinates(df, address1, address2)
+        address = address.split()
+        nx, ny = processor.match_coordinates(df, address[0], address[1])
         key = f'{nx}_{ny}'
         dic[key].append(address)
 
