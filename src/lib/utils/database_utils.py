@@ -29,3 +29,6 @@ class Database_utils:
 
         merge = list({item for row in rows for item in row})
         return merge
+    
+
+    

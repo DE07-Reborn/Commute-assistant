@@ -298,9 +298,63 @@ services:
       POSTGRES_USER: ${APP_DB_USER}
       POSTGRES_PASSWORD: ${APP_DB_PSWD}
       POSTGRES_DB: ${APP_DB_NAME}
+      TZ: Asia/Seoul
+      PGTZ: Asia/Seoul
     healthcheck:
       test: ["CMD", "pg_isready", "-U"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: always
+
+
+  # Google API scheduler - route
+  route-scheduler:
+    build:
+      context: .
+      dockerfile: docker/kafka/Dockerfile
+    container_name: route-scheduler
+    env_file:
+      - .env
+    volumes:
+    - ./src/route_kafka/logs:/opt/project/logs
+    - ./src:/opt/project/src
+    networks:
+      - pipeline-net
+    restart: always
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      LOG_DIR: /opt/project/logs
+      PYTHONPATH: /opt/project/src
+      TZ: Asia/Seoul
+    depends_on:
+      kafka:
+        condition: service_started
+      postgres-app:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+
+  route-worker:
+    build:
+      context: .
+      dockerfile: docker/kafka_worker/Dockerfile
+    container_name: route-worker
+    env_file:
+      - .env
+    networks:
+      - pipeline-net
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      PYTHONPATH: /opt/project/src
+      TZ: Asia/Seoul
+    depends_on:
+      kafka:
+        condition: service_started
+      redis-cache:
+        condition: service_healthy
     restart: always
