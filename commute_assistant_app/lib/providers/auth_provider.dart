@@ -12,6 +12,9 @@ class AuthProvider with ChangeNotifier {
   String? _homeAddress;
   double? _homeLatitude;
   double? _homeLongitude;
+  String? _workAddress;
+  double? _workLatitude;
+  double? _workLongitude;
 
   AuthProvider({required this.apiService});
 
@@ -23,6 +26,9 @@ class AuthProvider with ChangeNotifier {
   String? get homeAddress => _homeAddress;
   double? get homeLatitude => _homeLatitude;
   double? get homeLongitude => _homeLongitude;
+  String? get workAddress => _workAddress;
+  double? get workLatitude => _workLatitude;
+  double? get workLongitude => _workLongitude;
 
   /// 로그인
   Future<bool> login(String username, String password) async {
@@ -44,6 +50,13 @@ class AuthProvider with ChangeNotifier {
         _homeLongitude = response['home_longitude'] != null 
             ? double.tryParse(response['home_longitude'].toString()) 
             : null;
+        _workAddress = response['work_address'];
+        _workLatitude = response['work_latitude'] != null
+          ? double.tryParse(response['work_latitude'].toString())
+          : null;
+        _workLongitude = response['work_longitude'] != null
+          ? double.tryParse(response['work_longitude'].toString())
+          : null;
         _error = null;
         notifyListeners();
         return true;

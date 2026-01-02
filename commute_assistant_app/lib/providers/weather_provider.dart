@@ -101,18 +101,16 @@ class WeatherProvider with ChangeNotifier {
       // 서울 중심 좌표 (강남구 기준)
       const seoulCenterLat = 37.5172;
       const seoulCenterLng = 127.0473;
-      const seoulRadiusKm = 50.0;  // 서울 반경 50km
 
-      // 현재 위치가 서울에서 멀리 떨어져 있는지 확인
-      final distanceFromSeoul = _locationService.calculateDistance(
-        currentPosition.latitude,
-        currentPosition.longitude,
-        seoulCenterLat,
-        seoulCenterLng,
-      ) / 1000.0;  // 미터를 km로 변환
+      // 현재 위치가 대한민국(한국) 내부인지 간단히 판별합니다.
+      // LocationService.getAddressFromCoordinates가 반환하는 문자열에 국가명이 포함되므로
+      // '대한민국', '한국', 'korea' 여부로 판별합니다.
+      final addrLower = _currentLocationAddress?.toLowerCase() ?? '';
+      final isInKorea = addrLower.contains('대한민국') || addrLower.contains('한국') || addrLower.contains('korea');
 
-      if (distanceFromSeoul > seoulRadiusKm) {
-        print('현재 위치가 서울에서 멀리 떨어져 있습니다 (${distanceFromSeoul.toStringAsFixed(1)}km). 강남구 좌표로 매칭합니다.');
+      if (!isInKorea) {
+        // 한국 내 지역이 아니면 서울(강남구)로 고정
+        print('현재 위치가 한국 내 지역이 아님으로 간주, 강남구 좌표로 매칭합니다. 주소: $_currentLocationAddress');
         targetLat = seoulCenterLat;
         targetLng = seoulCenterLng;
       } else if (homeLat != null && homeLng != null) {

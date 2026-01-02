@@ -66,7 +66,7 @@ class RecommendationServiceApi {
         for (var track in musicData) {
           final trackName = track['trackName']?.toString() ?? '';
           final albumName = track['albumName']?.toString() ?? '';
-          final artists = track['artists']?.toString() ?? '';
+          final artists = (track['artists']?.toString() ?? '').replaceAll(';', ', ');
           // 트랙 네임\n앨범 네임\n아티스트 형식으로 저장
           music.add('$trackName\n$albumName\n$artists');
         }

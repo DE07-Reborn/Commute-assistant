@@ -7,6 +7,7 @@ import 'providers/saved_location_provider.dart';
 import 'providers/recent_search_provider.dart';
 import 'providers/places_provider.dart';
 import 'providers/auth_provider.dart';
+import 'providers/event_settings_provider.dart';
 import 'services/maps_service.dart';
 import 'services/weather_service_api.dart';
 import 'services/recommendation_service_api.dart';
@@ -121,6 +122,11 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => PlacesProvider(placesService: placesService),
         ),
+        ChangeNotifierProvider(
+          create: (_) => EventSettingsProvider(apiService: apiService),
+        ),
+        // ApiService를 전역으로 제공하여 UI에서 직접 호출 가능하도록 함
+        Provider.value(value: apiService),
       ],
       child: MaterialApp(
         title: '출퇴근 도우미',

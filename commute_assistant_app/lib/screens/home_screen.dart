@@ -7,12 +7,14 @@ import '../providers/route_provider.dart';
 import '../providers/saved_location_provider.dart';
 import '../providers/recent_search_provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
 import '../models/saved_location.dart';
 import '../models/recent_search.dart';
 import '../widgets/address_autocomplete_field.dart';
 import 'route_screen.dart';
 import 'recommendation_tab_screen.dart';
 import 'login_screen.dart';
+import 'notification_settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -32,6 +34,8 @@ class _HomeScreenState extends State<HomeScreen> {
   double? _destLat;
   double? _destLng;
   String _currentGreeting = '';
+  bool _maskRequired = false;
+  String _lastMaskKey = '';
 
   @override
   void initState() {
@@ -75,6 +79,53 @@ class _HomeScreenState extends State<HomeScreen> {
     _originController.dispose();
     _destinationController.dispose();
     super.dispose();
+  }
+
+  Future<void> _updateMaskStateIfNeeded(WeatherProvider weatherProvider, AuthProvider authProvider) async {
+    // 준비할 장소 리스트
+    List<String> places = [];
+
+    if (authProvider.isLoggedIn) {
+      if (weatherProvider.currentLocationAddress != null) {
+        places.add(weatherProvider.currentLocationAddress!);
+      }
+      if (authProvider.workAddress != null) {
+        places.add(authProvider.workAddress!);
+      }
+      if (places.isEmpty) {
+        places.add('서울 강남구');
+      }
+    } else {
+      // 로그인 안 한 경우: 현재 위치가 한국인지 간단히 검사
+      final addr = weatherProvider.currentLocationAddress;
+      if (addr == null) {
+        places = ['서울 강남구'];
+      } else {
+        final lower = addr.toLowerCase();
+        if (lower.contains('korea') || lower.contains('대한민국') || lower.contains('한국')) {
+          places = [addr];
+        } else {
+          places = ['서울 강남구'];
+        }
+      }
+    }
+
+    final key = places.join('|');
+    if (key == _lastMaskKey) return; // 중복 호출 방지
+    _lastMaskKey = key;
+
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      final resp = await api.postAirMatch(places);
+      final mask = resp != null && resp['mask_required'] == true;
+      if (mounted) {
+        setState(() {
+          _maskRequired = mask;
+        });
+      }
+    } catch (e) {
+      print('마스크 상태 조회 오류: $e');
+    }
   }
 
   Future<void> _searchRoute() async {
@@ -165,13 +216,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final now = DateTime.now();
     final hour = now.hour;
     if (hour >= 0 && hour < 6) {
-      return '하루를 시작해볼까요? 👋';
+      return '하루를 시작해볼까요?👋';
     } else if (hour >= 6 && hour < 12) {
-      return '좋은 아침이에요 👋';
+      return '좋은 아침이에요👋';
     } else if (hour >= 12 && hour < 18) {
-      return '좋은 오후에요 👋';
+      return '좋은 오후에요👋';
     } else {
-      return '좋은 저녁이에요 👋';
+      return '좋은 저녁이에요👋';
     }
   }
 
@@ -186,66 +237,100 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               // 상단 인사말 및 로그인/로그아웃
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                padding: const EdgeInsets.fromLTRB(20, 20, 12, 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Consumer<AuthProvider>(
-                      builder: (context, authProvider, _) {
-                        final greeting = authProvider.isLoggedIn
-                            ? '$_currentGreeting ${authProvider.name ?? authProvider.username ?? "사용자"}님'
-                            : '$_currentGreeting 사용자님';
-                        return Text(
-                          greeting,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 20,
-                          ),
-                        );
-                      },
+                    Flexible(
+                      child: Consumer<AuthProvider>(
+                        builder: (context, authProvider, _) {
+                          final greeting = authProvider.isLoggedIn
+                              ? '$_currentGreeting ${authProvider.name ?? authProvider.username ?? "사용자"}님'
+                              : '$_currentGreeting 사용자님';
+                          return Text(
+                            greeting,
+                            softWrap: true,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
+                          );
+                        },
+                      ),
                     ),
                     Consumer<AuthProvider>(
                       builder: (context, authProvider, _) {
                         if (authProvider.isLoggedIn) {
-                          // 로그아웃 버튼
-                          return IconButton(
-                            icon: const Icon(Icons.logout),
-                            tooltip: '로그아웃',
-                            onPressed: () {
-                              showDialog(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  title: const Text('로그아웃'),
-                                  content: const Text('로그아웃 하시겠습니까?'),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text('취소'),
+                          // 알림 설정 버튼과 로그아웃 버튼
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // 알림 설정 버튼
+                              GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const NotificationSettingsScreen(),
                                     ),
-                                    TextButton(
-                                      onPressed: () {
-                                        authProvider.logout();
-                                        Navigator.pop(context);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('로그아웃되었습니다'),
-                                            backgroundColor: Colors.blue,
-                                          ),
-                                        );
-                                      },
-                                      child: const Text('로그아웃'),
-                                    ),
-                                  ],
+                                  );
+                                },
+                                child: Tooltip(
+                                  message: '알림 설정',
+                                  child: Icon(
+                                    Icons.notifications,
+                                    size: 20,
+                                    color: Colors.black87,
+                                  ),
                                 ),
-                              );
-                            },
+                              ),
+                              const SizedBox(width: 8),
+                              // 로그아웃 버튼
+                              GestureDetector(
+                                onTap: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: const Text('로그아웃'),
+                                      content: const Text('로그아웃 하시겠습니까?'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context),
+                                          child: const Text('취소'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () {
+                                            authProvider.logout();
+                                            Navigator.pop(context);
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(
+                                                content: Text('로그아웃되었습니다'),
+                                                backgroundColor: Colors.blue,
+                                              ),
+                                            );
+                                          },
+                                          child: const Text('로그아웃'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                                child: Tooltip(
+                                  message: '로그아웃',
+                                  child: Icon(
+                                    Icons.logout,
+                                    size: 20,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ),
+                            ],
                           );
                         } else {
                           // 로그인 버튼
-                          return IconButton(
-                            icon: const Icon(Icons.login),
-                            tooltip: '로그인',
-                            onPressed: () {
+                          return GestureDetector(
+                            onTap: () {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -253,6 +338,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               );
                             },
+                            child: Tooltip(
+                              message: '로그인',
+                              child: Icon(
+                                Icons.login,
+                                size: 20,
+                                color: Colors.black87,
+                              ),
+                            ),
                           );
                         }
                       },
@@ -280,6 +373,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     return const SizedBox.shrink();
                   }
 
+                  // 마스크 상태 업데이트 (비동기 호출)
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    final authProvider = context.read<AuthProvider>();
+                    _updateMaskStateIfNeeded(weatherProvider, authProvider);
+                  });
+
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Card(
@@ -303,7 +402,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // 위치 정보
+                            // 위치 정보 및 마스크 아이콘
                             Row(
                               children: [
                                 Icon(
@@ -329,26 +428,39 @@ class _HomeScreenState extends State<HomeScreen> {
                               children: [
                                 _getWeatherIcon(weather.condition, weather.weatherCategory, 48),
                                 const SizedBox(width: 12),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '${weather.temperature == 0 ? '0' : weather.temperature.toStringAsFixed(0)}°',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 36,
-                                        fontWeight: FontWeight.bold,
-                                        height: 1,
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${weather.temperature == 0 ? '0' : weather.temperature.toStringAsFixed(0)}°',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 36,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1,
+                                        ),
                                       ),
-                                    ),
-                                    Text(
-                                      weather.description,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
+                                      Text(
+                                        weather.description,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
+                                ),
+                                // 마스크 이미지 (오른쪽 끝)
+                                Opacity(
+                                  opacity: _maskRequired ? 1.0 : 0.35,
+                                  child: Image.asset(
+                                    'assets/images/mask.png',
+                                    width: 40,
+                                    height: 40,
+                                    color: Colors.white,
+                                    colorBlendMode: BlendMode.modulate,
+                                  ),
                                 ),
                               ],
                             ),
@@ -487,37 +599,62 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              // 저장된 장소
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '저장된 장소',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
+              // 저장된 장소 또는 출근 경로
+              Consumer<AuthProvider>(
+                builder: (context, authProvider, _) {
+                  final isLoggedIn = authProvider.isLoggedIn;
+                  
+                  if (!isLoggedIn) {
+                    return const SizedBox.shrink();
+                  }
+                  
+                  // 로그인한 경우
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '출근',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildCommuteRouteCard(authProvider),
+                        const SizedBox(height: 12),
+                        Text(
+                          '저장된 장소',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                        ),
+                        const SizedBox(height: 12),
+                        Consumer<SavedLocationProvider>(
+                          builder: (context, provider, _) {
+                            return SizedBox(
+                              height: 100,
+                              child: provider.locations.isEmpty
+                                  ? const Center(
+                                      child: Text('저장된 장소가 없습니다'),
+                                    )
+                                  : ListView.builder(
+                                      scrollDirection: Axis.horizontal,
+                                      itemCount: provider.locations.length,
+                                      itemBuilder: (context, index) {
+                                        final location = provider.locations[index];
+                                        return _buildSavedLocationCard(location);
+                                      },
+                                    ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 12),
-                    Consumer<SavedLocationProvider>(
-                      builder: (context, provider, _) {
-                        return SizedBox(
-                          height: 100,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: provider.locations.length,
-                            itemBuilder: (context, index) {
-                              final location = provider.locations[index];
-                              return _buildSavedLocationCard(location);
-                            },
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
               const SizedBox(height: 24),
               // 최근 검색
@@ -688,6 +825,104 @@ class _HomeScreenState extends State<HomeScreen> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCommuteRouteCard(AuthProvider authProvider) {
+    final homeAddress = authProvider.homeAddress ?? '집';
+    final workAddress = authProvider.workAddress ?? '직장';
+    
+    // 도로명 주소부터만 추출하는 함수
+    String _extractRoadName(String address) {
+      // 주소 포맷: "시도 구군 (읍면동) 도로명 건물번호"
+      final parts = address.split(' ');
+      
+      // 최소 3개 이상의 부분이 있어야 도로명이 있음
+      if (parts.length >= 3) {
+        // 처음 2개(시도, 구군)를 제외하고 나머지(도로명 이후)만 반환
+        return parts.skip(2).join(' ').trim();
+      }
+      
+      return address;
+    }
+    
+    final homeRoadName = _extractRoadName(homeAddress);
+    final workRoadName = _extractRoadName(workAddress);
+
+    return GestureDetector(
+      onTap: () {
+        if (authProvider.homeAddress != null && authProvider.workAddress != null) {
+          // 경로 검색 화면으로 직접 이동
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => RouteScreen(
+                initialOrigin: authProvider.homeAddress!,
+                initialDestination: authProvider.workAddress!,
+                originLat: authProvider.homeLatitude,
+                originLng: authProvider.homeLongitude,
+                destLat: authProvider.workLatitude,
+                destLng: authProvider.workLongitude,
+              ),
+            ),
+          );
+        }
+      },
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.arrow_forward,
+                  color: Colors.blue.shade700,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$homeRoadName → $workRoadName',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '집에서 직장으로 이동',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 18,
+                color: Colors.grey.shade400,
               ),
             ],
           ),

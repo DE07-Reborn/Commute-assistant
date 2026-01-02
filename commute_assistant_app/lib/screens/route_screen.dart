@@ -5,7 +5,22 @@ import '../providers/route_provider.dart';
 import '../models/route_info.dart';
 
 class RouteScreen extends StatefulWidget {
-  const RouteScreen({super.key});
+  final String? initialOrigin;
+  final String? initialDestination;
+  final double? originLat;
+  final double? originLng;
+  final double? destLat;
+  final double? destLng;
+
+  const RouteScreen({
+    super.key,
+    this.initialOrigin,
+    this.initialDestination,
+    this.originLat,
+    this.originLng,
+    this.destLat,
+    this.destLng,
+  });
 
   @override
   State<RouteScreen> createState() => _RouteScreenState();
@@ -34,6 +49,19 @@ class _RouteScreenState extends State<RouteScreen> {
         }
       }
     });
+    
+    // 초기값이 있으면 경로 검색 수행
+    if (widget.initialOrigin != null && widget.initialDestination != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          final routeProvider = context.read<RouteProvider>();
+          routeProvider.searchRoute(
+            origin: widget.initialOrigin!,
+            destination: widget.initialDestination!,
+          );
+        }
+      });
+    }
   }
 
   @override

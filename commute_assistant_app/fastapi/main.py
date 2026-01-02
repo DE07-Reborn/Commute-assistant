@@ -16,7 +16,7 @@ from datetime import datetime
 
 # 데이터베이스 및 모델 import
 from database import engine, get_db, Base
-from models import User, Gender
+from models import User, UserProfile, UserAddress, Event, Gender
 from auth import hash_password, verify_password
 from address_service import AddressService
 
@@ -29,10 +29,24 @@ async def startup_event():
     from database import test_connection
     if test_connection():
         try:
+            # 테이블이 없으면 생성 (기존 데이터 보존)
             Base.metadata.create_all(bind=engine)
             print("✅ 데이터베이스 테이블 생성 완료")
         except Exception as e:
             print(f"❌ 데이터베이스 테이블 생성 실패: {e}")
+            import traceback
+            traceback.print_exc()
+            # 테이블 스키마 문제일 수 있으므로 재생성 시도
+            print("⚠️ 기존 테이블과 스키마 불일치 가능성. 테이블 재생성 시도...")
+            try:
+                # 개발 환경에서만 사용 (기존 데이터 삭제됨)
+                # 프로덕션에서는 마이그레이션 도구 사용 권장
+                if os.getenv('ENVIRONMENT') == 'development':
+                    Base.metadata.drop_all(bind=engine)
+                    Base.metadata.create_all(bind=engine)
+                    print("✅ 데이터베이스 테이블 재생성 완료")
+            except Exception as recreate_error:
+                print(f"❌ 테이블 재생성 실패: {recreate_error}")
     else:
         print("⚠️ 데이터베이스 연결 실패 - 일부 기능이 작동하지 않을 수 있습니다")
 
@@ -58,6 +72,12 @@ redis_client = redis.Redis(
 address_service = AddressService(
     api_key=os.getenv('GOOGLE_MAPS_API_KEY', '')
 )
+
+# 대지역 리스트 (매칭용)
+LARGE_REGIONS = [
+    "서울", "부산", "대구", "인천", "광주", "대전", "울산",
+    "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주", "세종"
+]
 
 
 # Pydantic 모델
@@ -592,6 +612,9 @@ class LoginResponse(BaseModel):
     home_address: Optional[str] = None
     home_latitude: Optional[str] = None
     home_longitude: Optional[str] = None
+    work_address: Optional[str] = None
+    work_latitude: Optional[str] = None
+    work_longitude: Optional[str] = None
 
 
 class AddressAutocompleteRequest(BaseModel):
@@ -615,7 +638,17 @@ async def signup(
     """
     try:
         # 1. 아이디 중복 확인
-        existing_user = db.query(User).filter(User.username == request.username).first()
+        try:
+            existing_user = db.query(User).filter(User.user_id == request.username).first()
+        except Exception as query_error:
+            print(f"사용자 조회 오류: {query_error}")
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(
+                status_code=500,
+                detail=f"데이터베이스 쿼리 오류: {str(query_error)}"
+            )
+        
         if existing_user:
             raise HTTPException(
                 status_code=400,
@@ -682,23 +715,67 @@ async def signup(
         # 5. 비밀번호 해싱
         password_hash = hash_password(request.password)
         
-        # 6. 사용자 생성
-        # 원본 주소(기본 주소 + 상세 주소)를 그대로 저장
+        # 6. users 테이블에 사용자 기본 정보 저장
         new_user = User(
-            username=request.username,
-            password_hash=password_hash,
-            name=request.name,
-            gender=gender_enum,
-            home_address=request.home_address,  # 원본 주소 저장 (상세 주소 포함)
-            home_latitude=float(home_info['latitude']),
-            home_longitude=float(home_info['longitude']),
-            work_address=request.work_address,  # 원본 주소 저장 (상세 주소 포함)
-            work_latitude=float(work_info['latitude']),
-            work_longitude=float(work_info['longitude']),
-            work_start_time=request.work_start_time
+            user_id=request.username,
+            password=password_hash
         )
         
         db.add(new_user)
+        db.flush()  # ID를 얻기 위해 flush
+        
+        # 7. user_profile 테이블에 프로필 정보 저장
+        # work_start_time을 commute_time으로 변환 (HH:MM -> Time)
+        from datetime import time as dt_time
+        commute_time = None
+        if request.work_start_time:
+            try:
+                hour, minute = map(int, request.work_start_time.split(':'))
+                commute_time = dt_time(hour=hour, minute=minute)
+            except (ValueError, AttributeError):
+                pass
+        
+        new_profile = UserProfile(
+            id=new_user.id,
+            name=request.name,
+            gender=gender_enum.value,  # Enum 값을 문자열로 저장
+            commute_time=commute_time,
+            feedback_min=None  # 회원가입 시 기본값
+        )
+        db.add(new_profile)
+        
+        # 8. user_address 테이블에 주소 정보 저장
+        new_address = UserAddress(
+            id=new_user.id,
+            home_address=request.home_address[5:],
+            home_lat=float(home_info['latitude']),
+            home_lon=float(home_info['longitude']),
+            work_address=request.work_address[5:],
+            work_lat=float(work_info['latitude']),
+            work_lon=float(work_info['longitude'])
+        )
+        db.add(new_address)
+        
+        # 9. events 테이블에 기본 알림 설정을 생성 (회원가입 시 기본값 True)
+        try:
+            new_event = Event(
+                id=new_user.id,
+                notify_before_departure=True,
+                notify_mask=True,
+                notify_umbrella=True,
+                notify_clothing=True,
+                notify_music=True,
+                notify_book=True,
+                updated_at=datetime.utcnow()
+            )
+            db.add(new_event)
+        except Exception as event_err:
+            # 이벤트 생성 오류는 회원가입 전체 실패로 연결하지 않음
+            print(f"⚠️ Event 생성 실패: {event_err}")
+            import traceback
+            traceback.print_exc()
+        
+        # 10. 모든 변경사항 커밋
         db.commit()
         db.refresh(new_user)
         
@@ -733,7 +810,7 @@ async def login(
     """
     try:
         # 1. 사용자 조회
-        user = db.query(User).filter(User.username == request.username).first()
+        user = db.query(User).filter(User.user_id == request.username).first()
         
         if not user:
             raise HTTPException(
@@ -742,21 +819,28 @@ async def login(
             )
         
         # 2. 비밀번호 검증
-        if not verify_password(request.password, user.password_hash):
+        if not verify_password(request.password, user.password):
             raise HTTPException(
                 status_code=401,
                 detail="아이디 또는 비밀번호가 올바르지 않습니다"
             )
         
+        # 3. 프로필 및 주소 정보 조회
+        profile = db.query(UserProfile).filter(UserProfile.id == user.id).first()
+        address = db.query(UserAddress).filter(UserAddress.id == user.id).first()
+        
         return LoginResponse(
             success=True,
             message="로그인 성공",
             user_id=user.id,
-            username=user.username,
-            name=user.name,
-            home_address=user.home_address,
-            home_latitude=str(user.home_latitude) if user.home_latitude else None,
-            home_longitude=str(user.home_longitude) if user.home_longitude else None
+            username=user.user_id,
+            name=profile.name if profile else None,
+            home_address=address.home_address if address else None,
+            home_latitude=str(address.home_lat) if address and address.home_lat else None,
+            home_longitude=str(address.home_lon) if address and address.home_lon else None,
+            work_address=address.work_address if address else None,
+            work_latitude=str(address.work_lat) if address and address.work_lat else None,
+            work_longitude=str(address.work_lon) if address and address.work_lon else None
         )
         
     except HTTPException:
@@ -846,6 +930,109 @@ async def validate_address(request: AddressValidateRequest):
         )
 
 
+# 알림 설정 관련 Pydantic 모델
+class EventSettingsResponse(BaseModel):
+    """알림 설정 조회 응답"""
+    user_id: int
+    notify_before_departure: bool
+    notify_mask: bool
+    notify_umbrella: bool
+    notify_clothing: bool
+    notify_music: bool
+    notify_book: bool
+
+
+class EventSettingsRequest(BaseModel):
+    """알림 설정 업데이트 요청"""
+    notify_before_departure: Optional[bool] = None
+    notify_mask: Optional[bool] = None
+    notify_umbrella: Optional[bool] = None
+    notify_clothing: Optional[bool] = None
+    notify_music: Optional[bool] = None
+    notify_book: Optional[bool] = None
+
+
+# 알림 설정 조회
+@app.get("/api/v1/events/settings", response_model=EventSettingsResponse)
+async def get_event_settings(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """사용자의 알림 설정 조회"""
+    try:
+        event = db.query(Event).filter(Event.id == user_id).first()
+        
+        if not event:
+            raise HTTPException(
+                status_code=404,
+                detail="사용자의 알림 설정을 찾을 수 없습니다"
+            )
+        
+        return EventSettingsResponse(
+            user_id=user_id,
+            notify_before_departure=event.notify_before_departure,
+            notify_mask=event.notify_mask,
+            notify_umbrella=event.notify_umbrella,
+            notify_clothing=event.notify_clothing,
+            notify_music=event.notify_music,
+            notify_book=event.notify_book
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"알림 설정 조회 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+# 알림 설정 업데이트
+@app.put("/api/v1/events/settings", response_model=dict)
+async def update_event_settings(
+    user_id: int,
+    request: EventSettingsRequest,
+    db: Session = Depends(get_db)
+):
+    """사용자의 알림 설정 업데이트"""
+    try:
+        event = db.query(Event).filter(Event.id == user_id).first()
+        
+        if not event:
+            raise HTTPException(
+                status_code=404,
+                detail="사용자의 알림 설정을 찾을 수 없습니다"
+            )
+        
+        # 업데이트할 필드가 있으면 업데이트
+        if request.notify_before_departure is not None:
+            event.notify_before_departure = request.notify_before_departure
+        if request.notify_mask is not None:
+            event.notify_mask = request.notify_mask
+        if request.notify_umbrella is not None:
+            event.notify_umbrella = request.notify_umbrella
+        if request.notify_clothing is not None:
+            event.notify_clothing = request.notify_clothing
+        if request.notify_music is not None:
+            event.notify_music = request.notify_music
+        if request.notify_book is not None:
+            event.notify_book = request.notify_book
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "알림 설정이 업데이트되었습니다"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"알림 설정 업데이트 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
 @app.get("/health")
 async def health_check():
     """헬스 체크"""
@@ -871,6 +1058,124 @@ async def health_check():
         return redis_info
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
+
+
+# 공기질(미세먼지) 매칭 엔드포인트
+class AirMatchRequest(BaseModel):
+    places: list[str] = []
+
+
+class AirPlaceResult(BaseModel):
+    place: str
+    matched_key: Optional[str] = None
+    pm10: Optional[str] = None
+    pm25: Optional[str] = None
+    pm10_level: Optional[str] = None
+    pm25_level: Optional[str] = None
+    mask_required: Optional[str] = None
+
+
+class AirMatchResponse(BaseModel):
+    places: list[AirPlaceResult]
+    mask_required: bool = False
+
+
+def _normalize(s: str) -> str:
+    return s.strip().lower() if s else ""
+
+
+def _match_place_to_redis(place: str) -> Optional[tuple[str, dict]]:
+    """주어진 장소 문자열에서 Redis의 air:대지역:세부분류 키를 찾아 반환
+    반환값: (key, hash_dict) 또는 None
+    매칭 전략:
+    - 큰지역(LARGE_REGIONS) 중 place에 포함된 것이 있으면 그 지역의 모든 air 키 검색
+    - 각 키의 세부분류(detail) 문자열이 place에 부분문자열로 포함되는지 확인
+    - 없으면 그 큰지역의 첫 키를 반환(근사)
+    - 큰지역이 없으면 전체 air:* 키들을 검색하여 부분매칭 시 반환
+    """
+    normalized = _normalize(place)
+    try:
+        # 우선 큰지역 포함 여부로 좁혀보기
+        for region in LARGE_REGIONS:
+            if region and region in place:
+                pattern = f"air:{region}:*"
+                keys = redis_client.keys(pattern)
+                for k in keys:
+                    # 키 형식: air:대지역:세부분류
+                    parts = k.split(":", 2)
+                    if len(parts) == 3:
+                        detail = parts[2]
+                        if detail and _normalize(detail) in normalized:
+                            return k, redis_client.hgetall(k)
+                # 근사: 첫 키 반환
+                if keys:
+                    return keys[0], redis_client.hgetall(keys[0])
+
+        # 큰지역이 없거나 매칭 실패하면 전체 검색
+        all_keys = redis_client.keys("air:*")
+        for k in all_keys:
+            parts = k.split(":", 2)
+            if len(parts) == 3:
+                detail = parts[2]
+                if detail and _normalize(detail) in normalized:
+                    return k, redis_client.hgetall(k)
+
+        return None
+    except Exception as e:
+        print(f"Redis 매칭 중 오류: {e}")
+        return None
+
+
+@app.post("/api/v1/air/match", response_model=AirMatchResponse)
+async def match_air_places(request: AirMatchRequest):
+    """Flutter에서 보낸 장소 문자열 목록을 받아 Redis의 air 키에 매칭하고
+    각 장소별 공기질 정보를 반환합니다. 전체적으로 마스크 필요 여부도 함께 반환.
+    """
+    results: list[AirPlaceResult] = []
+    overall_mask = False
+
+    try:
+        for place in request.places:
+            found = _match_place_to_redis(place)
+            if found:
+                key, data = found
+                pm10 = data.get('pm10')
+                pm25 = data.get('pm25')
+                pm10_level = data.get('pm10_level')
+                pm25_level = data.get('pm25_level')
+                mask_required = data.get('mask_required')
+
+                # pm*_level이 '나쁨' 또는 '매우나쁨'이면 마스크 필요로 간주
+                is_bad = False
+                def _level_is_bad(v):
+                    if not v:
+                        return False
+                    val = v.decode() if hasattr(v, 'decode') else v
+                    val = val.strip()
+                    return val in ('나쁨', '매우나쁨')
+
+                if _level_is_bad(pm10_level) or _level_is_bad(pm25_level):
+                    is_bad = True
+
+                if is_bad:
+                    overall_mask = True
+
+                results.append(AirPlaceResult(
+                    place=place,
+                    matched_key=key,
+                    pm10=pm10,
+                    pm25=pm25,
+                    pm10_level=pm10_level,
+                    pm25_level=pm25_level,
+                    mask_required=mask_required
+                ))
+            else:
+                results.append(AirPlaceResult(place=place))
+
+        return AirMatchResponse(places=results, mask_required=overall_mask)
+    except Exception as e:
+        print(f"공기질 매칭 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"공기질 매칭 중 오류: {e}")
 
 
 if __name__ == "__main__":
