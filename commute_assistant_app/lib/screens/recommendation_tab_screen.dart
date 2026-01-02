@@ -445,11 +445,11 @@ class _RecommendationTabScreenState extends State<RecommendationTabScreen>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.menu_book, color: Colors.orange, size: 22),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 8),
                       ClipRect(
                         clipBehavior: Clip.hardEdge,
                         child: SizedBox(
-                          height: 40,
+                          height: 50,
                           width: double.infinity,
                           child: _buildAutoScrollText(
                             recommendation.books[index],
@@ -521,7 +521,7 @@ class _RecommendationTabScreenState extends State<RecommendationTabScreen>
                       size: 24,
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 20),
                   Expanded(
                     child: _buildAutoScrollText(
                       book,
@@ -557,7 +557,7 @@ class _RecommendationTabScreenState extends State<RecommendationTabScreen>
         itemBuilder: (context, index) {
           return Container(
             width: 132,
-            margin: EdgeInsets.only(right: index < recommendation.music.length - 1 ? 12 : 0),
+            margin: EdgeInsets.only(right: index < recommendation.music.length - 1 ? 6 : 0),
             child: Card(
               elevation: 1,
               shape: RoundedRectangleBorder(
@@ -610,7 +610,7 @@ class _RecommendationTabScreenState extends State<RecommendationTabScreen>
         final music = entry.value;
         return Card(
           elevation: 2,
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 6),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),

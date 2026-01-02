@@ -33,7 +33,7 @@ class Data_api_collector:
         """
         url = 'http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst'
         params = {
-            'serviceKey' : self.key, 
+            'serviceKey' : '51887d0bc6943153036800e97a0d5c224dc76be04281f74aa0b35d3e3ecd7a12', 
             'pageNo' : '1', 
             'numOfRows' : '1000', 
             'dataType' : 'JSON', 

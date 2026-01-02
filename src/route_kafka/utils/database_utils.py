@@ -44,9 +44,9 @@ class Database_utils:
                 , COALESCE(up.feedback_min, 0) as feedback_min
             FROM users u
             JOIN user_profile up
-                ON u.id = up.user_id
+                ON u.id = up.id
             JOIN user_address ua
-                ON u.id = ua.user_id
+                ON u.id = ua.id
             WHERE
                 up.commute_time IS NOT NULL
                 AND (date_trunc('day', now()) + up.commute_time - INTERVAL '10 minutes') 
