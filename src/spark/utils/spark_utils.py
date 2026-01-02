@@ -5,7 +5,7 @@ from pyspark.sql.functions import (
     explode, min, max, avg, struct,
     collect_list, expr, row_number,
     substring, concat_ws, coalesce, to_json,
-    trim, first, max as spark_max, to_date,from_utc_timestamp
+    trim, first, max as spark_max, to_date,
 )
 from pyspark.sql.window import Window
 import json
