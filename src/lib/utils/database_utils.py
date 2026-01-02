@@ -23,9 +23,12 @@ class Database_utils:
             Get all unique address of home and work
         """
         self.cur.execute("""
-            select home_address, work_address from "user".user_info
+            select home_address, work_address from public.user_address
         """)
         rows = self.cur.fetchall()
 
         merge = list({item for row in rows for item in row})
         return merge
+    
+
+    

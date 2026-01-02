@@ -27,14 +27,14 @@ def request_and_send_api(**context):
     api_collector = Data_api_collector(ymd, hm)
 
     address_list = db_utils.get_unique_address()
-    logging.info(address_list)
     df = S3_utils(ymd, hm).read_address()
 
     sent_count = 0
     dic = defaultdict(list)
     for address in address_list:
-        address1, address2 = address.split()
-        nx, ny = processor.match_coordinates(df, address1, address2)
+        address = address.split()
+        nx, ny = processor.match_coordinates(df, address[0], address[1])
+        logging.info(f"nx={nx}, ny={ny}")
         key = f'{nx}_{ny}'
         dic[key].append(address)
 

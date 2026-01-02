@@ -1,0 +1,10 @@
+src/logs/
+**/scheduler/latest
+
+# route-scheduler logs
+src/kafka/**/logs/
+
+# 기타
+__pycache__/
+*.pyc
+.git

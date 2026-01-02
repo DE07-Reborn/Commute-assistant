@@ -189,7 +189,7 @@ class Spark_utils:
             when(col("hour").between(0, 6), "새벽")
             .when(col("hour").between(7, 11), "오전")
             .when(col("hour").between(12, 17), "오후")
-            .otherwise("밤")
+            .otherwise("저녁")
         )
         df = df \
             .withColumn("wc", coalesce(col("wc"), lit(-99))) \
@@ -204,7 +204,7 @@ class Spark_utils:
                 (col("season") == "여름") &
                 (
                     ((col("ta") >= 30) & col("time_category").isin("오전", "오후")) |
-                    ((col("ta") >= 25) & col("time_category").isin("새벽", "밤"))
+                    ((col("ta") >= 25) & col("time_category").isin("새벽", "저녁"))
                 ),
                 "더위"
             )
@@ -225,7 +225,7 @@ class Spark_utils:
                     col("ta").between(20, 26)
                 ) |
                 (
-                    (col("time_category") == "밤") &
+                    (col("time_category") == "저녁") &
                     col("ta").between(18, 22)
                 ) |
                 (
@@ -248,7 +248,7 @@ class Spark_utils:
                 "obs_time", "obs_ts", "obs_yyyymmddhh",
                 "stn_id",
                 "ws", "ta", "hm", "rn", "sd_tot",
-                "wc", "pop", "sky", 
+                "wc", "pop", "sky", "ws",
                 'weather_code'
             )
         )
@@ -486,8 +486,12 @@ class Spark_utils:
                         'wc': str(row['wc']) if row['wc'] is not None else '',
                         'pop': str(row['pop']) if row['pop'] is not None else '',
                         'sky': str(row['sky']) if row['sky'] is not None else '',
+                        'longitude': str(row['경도']) if row['경도'] is not None else '',
+                        'latitude': str(row['위도']) if row['위도'] is not None else '',
+                        'location': str(row['지역']) if row['지역'] is not None else '',
                         # 음악 추천 결과
-                        'music' : row['music_json'],
+                        'music' : row['music_json'] or "",
+                        'weather_code' : row['weather_code'] or "",
                         # 도서 추천 결과
                         "book_title": row["title"] or "",
                         "book_author": row["author"] or "",
@@ -495,9 +499,8 @@ class Spark_utils:
                         "book_description": row["description"] or "",
                         "book_isbn13": row["ebook_isbn13"] or "",
                         "book_link": row["ebook_link"] or "",
-                        
                     }
-                    
+
                     # Store in Redis as key : kma-stn:stn_id
                     key = f"kma-stn:{row['stn_id']}"
                     r.hset(key, mapping=weather_data)
@@ -509,6 +512,7 @@ class Spark_utils:
                     
                 except Exception as row_error:
                     self.log.error(f"Batch {batch_id}: Error saving row to Redis: {row_error}")
+                    logging.error()
                     continue
             
             self.log.info(f"Batch {batch_id}: Successfully saved {len(rows)} records to Redis")
