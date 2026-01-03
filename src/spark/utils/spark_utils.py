@@ -962,7 +962,7 @@ class Spark_utils:
     # Music metadata partition by weather code to get 10 random samples
     def get_music_data(self, spark):
         music_df = spark.read.parquet(
-            f"s3a://{self.bucket}/music/music_classified.parquet"
+            f"s3a://{self.bucket}/raw_data/music/music_classified.parquet"
         ).select("weather_code", "artists", "album_name", "track_name", "popularity")
         
 
