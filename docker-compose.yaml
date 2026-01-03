@@ -251,7 +251,7 @@ services:
   # ---------- fastAPI local----------
   commute_fastapi:
     build:
-      context: ./docker/fastapi
+      context: ./commute_assistant_app/fastapi
       dockerfile: Dockerfile
     container_name: commute_fastapi
     ports:
@@ -272,7 +272,7 @@ services:
       POSTGRES_HOST: ${APP_DB_HOST}
       POSTGRES_PORT: ${APP_DB_PORT}
     volumes:
-      - ./fastapi:/app
+      - ./commute_assistant_app/fastapi:/app
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -317,7 +317,7 @@ services:
       TZ: Asia/Seoul
       PGTZ: Asia/Seoul
     healthcheck:
-      test: ["CMD", "pg_isready", "-U"]
+      test: ["CMD", "pg_isready", "-U", "${APP_DB_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5
