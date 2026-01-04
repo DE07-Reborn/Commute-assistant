@@ -18,6 +18,7 @@ import 'recommendation_tab_screen.dart';
 import 'login_screen.dart';
 import 'notification_settings_screen.dart';
 import 'notification_history_screen.dart';
+import '../services/location_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -29,6 +30,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _originController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
+  final LocationService _locationService = LocationService();
   bool _isDateFormatInitialized = false;
   String? _originAddress;
   String? _destinationAddress;
@@ -155,41 +157,50 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
   Future<void> _updateMaskStateIfNeeded(WeatherProvider weatherProvider, AuthProvider authProvider) async {
-    // 준비할 장소 리스트
-    List<String> places = [];
+    final coordinates = <Map<String, double>>[];
 
-    if (authProvider.isLoggedIn) {
-      if (weatherProvider.currentLocationAddress != null) {
-        places.add(weatherProvider.currentLocationAddress!);
+    try {
+      final currentPosition = await _locationService.getCurrentPosition();
+      if (currentPosition != null) {
+        coordinates.add({
+          'latitude': currentPosition.latitude,
+          'longitude': currentPosition.longitude,
+        });
       }
-      if (authProvider.workAddress != null) {
-        places.add(authProvider.workAddress!);
-      }
-      if (places.isEmpty) {
-        places.add('서울 강남구');
-      }
-    } else {
-      // 로그인 안 한 경우: 현재 위치가 한국인지 간단히 검사
-      final addr = weatherProvider.currentLocationAddress;
-      if (addr == null) {
-        places = ['서울 강남구'];
-      } else {
-        final lower = addr.toLowerCase();
-        if (lower.contains('korea') || lower.contains('대한민국') || lower.contains('한국')) {
-          places = [addr];
-        } else {
-          places = ['서울 강남구'];
-        }
-      }
+    } catch (e) {
+      print('현재 위치 조회 오류: $e');
     }
 
-    final key = places.join('|');
-    if (key == _lastMaskKey) return; // 중복 호출 방지
+    if (authProvider.homeLatitude != null && authProvider.homeLongitude != null) {
+      coordinates.add({
+        'latitude': authProvider.homeLatitude!,
+        'longitude': authProvider.homeLongitude!,
+      });
+    }
+
+    if (authProvider.workLatitude != null && authProvider.workLongitude != null) {
+      coordinates.add({
+        'latitude': authProvider.workLatitude!,
+        'longitude': authProvider.workLongitude!,
+      });
+    }
+
+    if (coordinates.isEmpty) {
+      coordinates.add({
+        'latitude': 37.5172,
+        'longitude': 127.0473,
+      });
+    }
+
+    final key = coordinates
+        .map((c) => '${c['latitude']},${c['longitude']}')
+        .join('|');
+    if (key == _lastMaskKey) return;
     _lastMaskKey = key;
 
     try {
       final api = Provider.of<ApiService>(context, listen: false);
-      final resp = await api.postAirMatch(places);
+      final resp = await api.postAirMatch(coordinates);
       final mask = resp != null && resp['mask_required'] == true;
       if (mounted) {
         setState(() {

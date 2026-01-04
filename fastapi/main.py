@@ -13,6 +13,9 @@ import redis
 import json
 import os
 from datetime import datetime, timedelta
+import math
+import csv
+from pathlib import Path
 
 # 데이터베이스 및 모델 import
 from database import engine, get_db, Base
@@ -49,6 +52,10 @@ async def startup_event():
                 print(f"❌ 테이블 재생성 실패: {recreate_error}")
     else:
         print("⚠️ 데이터베이스 연결 실패 - 일부 기능이 작동하지 않을 수 있습니다")
+    try:
+        load_air_stations()
+    except Exception as e:
+        print(f"측정소 메타데이터 로딩 실패: {e}")
 
 # CORS 설정 (Flutter 앱에서 접근 가능하도록)
 app.add_middleware(
@@ -75,6 +82,75 @@ GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY', '')
 address_service = AddressService(
     api_key=GOOGLE_MAPS_API_KEY
 )
+
+# 미세먼지 측정소 메타데이터
+AIR_STATIONS: list[dict] = []
+
+def load_air_stations():
+    global AIR_STATIONS
+
+    csv_env = os.getenv('AIR_STATIONS_CSV')
+    if csv_env:
+        csv_path = Path(csv_env)
+    else:
+        csv_path = Path(__file__).resolve().parents[2] / 'dataset' / '측정소_통합.csv'
+
+    if not csv_path.exists():
+        print(f"? 측정소 메타데이터 CSV를 찾을 수 없습니다: {csv_path}")
+        AIR_STATIONS = []
+        return
+
+    stations = []
+    with csv_path.open('r', encoding='utf-8-sig') as file:
+        reader = csv.DictReader(file)
+
+        for row in reader:
+            station_code = row.get('stationCode')
+            lat = row.get('dmY')
+            lon = row.get('dmX')
+            if not station_code or not lat or not lon:
+                continue
+            try:
+                stations.append({
+                    'station_code': int(station_code),
+                    'latitude': float(lat),
+                    'longitude': float(lon),
+                })
+            except ValueError:
+                continue
+
+    AIR_STATIONS = stations
+    print(f"? 측정소 메타데이터 로드 완료: {len(AIR_STATIONS)}개")
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    r = 6371
+    lat1_rad = math.radians(lat1)
+    lon1_rad = math.radians(lon1)
+    lat2_rad = math.radians(lat2)
+    lon2_rad = math.radians(lon2)
+
+    dlon = lon2_rad - lon1_rad
+    dlat = lat2_rad - lat1_rad
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return r * c
+
+
+def find_nearest_air_station(latitude: float, longitude: float) -> int | None:
+    if not AIR_STATIONS:
+        return None
+
+    nearest_code = None
+    min_distance = float('inf')
+
+    for station in AIR_STATIONS:
+        distance = _haversine_km(latitude, longitude, station['latitude'], station['longitude'])
+        if distance < min_distance:
+            min_distance = distance
+            nearest_code = station['station_code']
+
+    return nearest_code
 
 # 대지역 리스트 (매칭용)
 LARGE_REGIONS = [
@@ -1187,118 +1263,74 @@ async def approve_route(request: RouteApprovalRequest):
 
 
 # 공기질(미세먼지) 매칭 엔드포인트
+class AirCoordinate(BaseModel):
+    latitude: float
+    longitude: float
+
+
 class AirMatchRequest(BaseModel):
-    places: list[str] = []
+    coordinates: list[AirCoordinate] = []
 
 
-class AirPlaceResult(BaseModel):
-    place: str
+class AirTargetResult(BaseModel):
+    latitude: float
+    longitude: float
+    station_code: Optional[int] = None
     matched_key: Optional[str] = None
-    pm10: Optional[str] = None
-    pm25: Optional[str] = None
-    pm10_level: Optional[str] = None
-    pm25_level: Optional[str] = None
-    mask_required: Optional[str] = None
+    mask_advice: Optional[str] = None
+    mask_required: Optional[bool] = None
 
 
 class AirMatchResponse(BaseModel):
-    places: list[AirPlaceResult]
+    targets: list[AirTargetResult]
     mask_required: bool = False
-
-
-def _normalize(s: str) -> str:
-    return s.strip().lower() if s else ""
-
-
-def _match_place_to_redis(place: str) -> Optional[tuple[str, dict]]:
-    """주어진 장소 문자열에서 Redis의 air:대지역:세부분류 키를 찾아 반환
-    반환값: (key, hash_dict) 또는 None
-    매칭 전략:
-    - 큰지역(LARGE_REGIONS) 중 place에 포함된 것이 있으면 그 지역의 모든 air 키 검색
-    - 각 키의 세부분류(detail) 문자열이 place에 부분문자열로 포함되는지 확인
-    - 없으면 그 큰지역의 첫 키를 반환(근사)
-    - 큰지역이 없으면 전체 air:* 키들을 검색하여 부분매칭 시 반환
-    """
-    normalized = _normalize(place)
-    try:
-        # 우선 큰지역 포함 여부로 좁혀보기
-        for region in LARGE_REGIONS:
-            if region and region in place:
-                pattern = f"air:{region}:*"
-                keys = redis_client.keys(pattern)
-                for k in keys:
-                    # 키 형식: air:대지역:세부분류
-                    parts = k.split(":", 2)
-                    if len(parts) == 3:
-                        detail = parts[2]
-                        if detail and _normalize(detail) in normalized:
-                            return k, redis_client.hgetall(k)
-                # 근사: 첫 키 반환
-                if keys:
-                    return keys[0], redis_client.hgetall(keys[0])
-
-        # 큰지역이 없거나 매칭 실패하면 전체 검색
-        all_keys = redis_client.keys("air:*")
-        for k in all_keys:
-            parts = k.split(":", 2)
-            if len(parts) == 3:
-                detail = parts[2]
-                if detail and _normalize(detail) in normalized:
-                    return k, redis_client.hgetall(k)
-
-        return None
-    except Exception as e:
-        print(f"Redis 매칭 중 오류: {e}")
-        return None
 
 
 @app.post("/api/v1/air/match", response_model=AirMatchResponse)
 async def match_air_places(request: AirMatchRequest):
-    """Flutter에서 보낸 장소 문자열 목록을 받아 Redis의 air 키에 매칭하고
-    각 장소별 공기질 정보를 반환합니다. 전체적으로 마스크 필요 여부도 함께 반환.
+    """좌표 목록을 받아 가장 가까운 측정소의 air-summary 데이터 조회.
+    mask_advice가 'Y'면 마스크 필요로 간주.
     """
-    results: list[AirPlaceResult] = []
+    if not AIR_STATIONS:
+        raise HTTPException(
+            status_code=500,
+            detail="측정소 메타데이터가 로드되지 않았습니다"
+        )
+
+    results: list[AirTargetResult] = []
     overall_mask = False
 
     try:
-        for place in request.places:
-            found = _match_place_to_redis(place)
-            if found:
-                key, data = found
-                pm10 = data.get('pm10')
-                pm25 = data.get('pm25')
-                pm10_level = data.get('pm10_level')
-                pm25_level = data.get('pm25_level')
-                mask_required = data.get('mask_required')
-
-                # pm*_level이 '나쁨' 또는 '매우나쁨'이면 마스크 필요로 간주
-                is_bad = False
-                def _level_is_bad(v):
-                    if not v:
-                        return False
-                    val = v.decode() if hasattr(v, 'decode') else v
-                    val = val.strip()
-                    return val in ('나쁨', '매우나쁨')
-
-                if _level_is_bad(pm10_level) or _level_is_bad(pm25_level):
-                    is_bad = True
-
-                if is_bad:
-                    overall_mask = True
-
-                results.append(AirPlaceResult(
-                    place=place,
-                    matched_key=key,
-                    pm10=pm10,
-                    pm25=pm25,
-                    pm10_level=pm10_level,
-                    pm25_level=pm25_level,
-                    mask_required=mask_required
+        for coord in request.coordinates:
+            station_code = find_nearest_air_station(coord.latitude, coord.longitude)
+            if station_code is None:
+                results.append(AirTargetResult(
+                    latitude=coord.latitude,
+                    longitude=coord.longitude,
                 ))
-            else:
-                results.append(AirPlaceResult(place=place))
+                continue
 
-        return AirMatchResponse(places=results, mask_required=overall_mask)
+            key = f"air-summary:{station_code}"
+            data = redis_client.hgetall(key)
+
+            print(f"[AIR] lat={coord.latitude} lon={coord.longitude} station={station_code} key={key}")
+
+            mask_advice = data.get('mask_advice') if data else None
+            mask_required = mask_advice == 'Y'
+
+            if mask_required:
+                overall_mask = True
+
+            results.append(AirTargetResult(
+                latitude=coord.latitude,
+                longitude=coord.longitude,
+                station_code=station_code,
+                matched_key=key if data else None,
+                mask_advice=mask_advice,
+                mask_required=mask_required,
+            ))
+
+        return AirMatchResponse(targets=results, mask_required=overall_mask)
     except Exception as e:
         print(f"공기질 매칭 오류: {e}")
         raise HTTPException(status_code=500, detail=f"공기질 매칭 중 오류: {e}")

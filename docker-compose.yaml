@@ -251,7 +251,7 @@ services:
   # ---------- fastAPI local----------
   commute_fastapi:
     build:
-      context: ./commute_assistant_app/fastapi
+      context: ./docker/fastapi
       dockerfile: Dockerfile
     container_name: commute_fastapi
     ports:
@@ -271,8 +271,10 @@ services:
       POSTGRES_DB: ${APP_DB_NAME}
       POSTGRES_HOST: ${APP_DB_HOST}
       POSTGRES_PORT: ${APP_DB_PORT}
+      AIR_STATIONS_CSV: /app/dataset/air_stations.csv
     volumes:
-      - ./commute_assistant_app/fastapi:/app
+      - ./fastapi:/app
+      - ./dataset:/app/dataset
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

@@ -125,13 +125,13 @@ class ApiService {
   }
 
   /// 공기질 장소 매칭
-  Future<Map<String, dynamic>?> postAirMatch(List<String> places) async {
+  Future<Map<String, dynamic>?> postAirMatch(List<Map<String, double>> coordinates) async {
     try {
       final url = Uri.parse('$baseUrl/api/v1/air/match');
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({'places': places}),
+        body: json.encode({'coordinates': coordinates}),
       );
 
       if (response.statusCode == 200) {
