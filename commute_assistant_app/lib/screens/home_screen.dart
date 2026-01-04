@@ -161,8 +161,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final departAtRaw = routeState['depart_at']?.toString();
     if (departAtRaw == null || departAtRaw.isEmpty) return;
     if (departAtRaw == _lastScheduledDepartAt) return;
-    final departAt = DateTime.tryParse(departAtRaw);
-    if (departAt == null) return;
+    final parsed = DateTime.tryParse(departAtRaw);
+    if (parsed == null) return;
+    final departAt = parsed.isUtc ? parsed.toLocal() : parsed;
     _lastScheduledDepartAt = departAtRaw;
     final notificationService = context.read<NotificationService>();
     await notificationService.scheduleCommuteNotifications(departAt: departAt);
@@ -600,6 +601,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         TextButton(
                                           onPressed: () {
                                             authProvider.logout();
+                                            context.read<NotificationService>().cancelAllNotifications();
                                             Navigator.pop(context);
                                             ScaffoldMessenger.of(context).showSnackBar(
                                               const SnackBar(
