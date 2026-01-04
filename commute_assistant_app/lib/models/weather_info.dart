@@ -1,3 +1,5 @@
+import 'recommendation_detail.dart';
+
 class WeatherInfo {
   final double temperature;
   final String condition; // 'sunny', 'rainy', 'cloudy', 'snowy'
@@ -25,12 +27,14 @@ class Recommendation {
   final List<String> books;
   final List<String> music;
   final List<String>? bookLinks;  // 도서 링크 리스트
+  final List<RecommendationDetail> clothingItems;
 
   Recommendation({
     required this.clothing,
     required this.books,
     required this.music,
     this.bookLinks,
+    this.clothingItems = const [],
   });
 }
 

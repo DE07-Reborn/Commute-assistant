@@ -16,6 +16,8 @@ from datetime import datetime, timedelta
 import math
 import csv
 from pathlib import Path
+from typing import Literal
+from pythermalcomfort.utilities import clo_individual_garments
 
 # 데이터베이스 및 모델 import
 from database import engine, get_db, Base
@@ -182,12 +184,18 @@ class MusicTrack(BaseModel):
     artists: str
     albumName: str
 
+class ClothingItem(BaseModel):
+    category: str  # "outer" | "top" | "bottom" | "etc"
+    name: str
+
 
 class UnifiedDataResponse(BaseModel):
     """통합 데이터 응답 모델"""
     weather: WeatherInfo
     book: Optional[BookInfo] = None
     music: list[MusicTrack] = []
+    clothing: list[ClothingItem] = []   # 추가
+    apparent_temp: Optional[float] = None  # 선택
 
 
 # Redis 서비스
@@ -387,11 +395,20 @@ async def get_unified_data(
     except Exception as e:
         print(f"음악 데이터 파싱 오류: {e}")
         music_data = []
+
+    # 기존 weather_data 계산 후
+    outfit = recommend_outfit(
+        t=weather_data["temperature"],
+        rh=weather_data["humidity"],
+        wind=weather_data["windSpeed"],
+    )
     
     return UnifiedDataResponse(
         weather=WeatherInfo(**weather_data),
         book=BookInfo(**book_data) if book_data else None,
-        music=[MusicTrack(**track) for track in music_data]
+        music=[MusicTrack(**track) for track in music_data],
+        clothing=items_with_category(outfit["items_en"]),
+        apparent_temp=outfit["apparent_temp_c"],
     )
 
 
@@ -1335,6 +1352,296 @@ async def match_air_places(request: AirMatchRequest):
         print(f"공기질 매칭 오류: {e}")
         raise HTTPException(status_code=500, detail=f"공기질 매칭 중 오류: {e}")
 
+class UmbrellaCoordinate(BaseModel):
+    latitude: float
+    longitude: float
+    kind: Literal["current", "home", "work"]
+
+
+class UmbrellaMatchRequest(BaseModel):
+    user_id: Optional[int] = None
+    coordinates: list[UmbrellaCoordinate] = []
+
+
+class UmbrellaTargetResult(BaseModel):
+    latitude: float
+    longitude: float
+    station_id: Optional[str] = None
+    weather_key: Optional[str] = None
+    forecast_key: Optional[str] = None
+    umbrella_required: Optional[bool] = None
+
+
+class UmbrellaMatchResponse(BaseModel):
+    targets: list[UmbrellaTargetResult]
+    umbrella_required: bool = False
+
+def region_parts_from_address(address: str | None) -> list[str]:
+    if not address:
+        return []
+    parts = address.split()
+    return parts[:2] if len(parts) >= 2 else []
+
+def normalize_location_for_forecast(location: str | None) -> list[str]:
+    if not location:
+        return []
+    parts = location.split()
+    if len(parts) >= 2:
+        return parts[:2]
+
+    short_map = {
+        "강남": "서울특별시 강남구",
+        "수원": "경기도 수원시",
+        # 필요한 만큼 추가
+    }
+    if parts and parts[0] in short_map:
+        full_parts = short_map[parts[0]].split()
+        if len(full_parts) >= 2:
+            return full_parts[:2]
+
+    return []
+
+def find_forecast_key_by_region(region_parts: list[str]) -> str | None:
+    """forecast:[...] 키 중에서 앞 2개 지역이 일치하는 키를 찾아 반환"""
+    if len(region_parts) < 2:
+        return None
+
+    keys = redis_client.keys("forecast:*")
+    if not keys:
+        return None
+
+    target_1, target_2 = region_parts[0], region_parts[1]
+
+    for key in keys:
+        raw = key.replace("forecast:", "", 1)
+        try:
+            arr = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(arr, list) and len(arr) >= 2:
+            if arr[0] == target_1 and arr[1] == target_2:
+                return key
+
+    return None
+
+@app.post("/api/v1/umbrella/match", response_model=UmbrellaMatchResponse)
+async def match_umbrella(request: UmbrellaMatchRequest, db: Session = Depends(get_db)):
+    results: list[UmbrellaTargetResult] = []
+    address_map = {}
+    if request.user_id is not None:
+        address = db.query(UserAddress).filter(UserAddress.id == request.user_id).first()
+        if address:
+            address_map = {
+                "home": address.home_address,
+                "work": address.work_address,
+            }
+
+    overall_umbrella = False
+
+    try:
+        for coord in request.coordinates:
+            nearest = await get_nearest_station(
+                coord.latitude, coord.longitude, RedisService(redis_client)
+            )
+            station_id = nearest.get("station_id")
+            if not station_id:
+                results.append(UmbrellaTargetResult(
+                    latitude=coord.latitude,
+                    longitude=coord.longitude,
+                ))
+                continue
+
+            # 2) 실시간 날씨 (rn > 0)
+            weather_key = f"kma-stn:{station_id}"
+            weather_data = redis_client.hgetall(weather_key)
+            rn = 0.0
+            if weather_data and weather_data.get("rn"):
+                try:
+                    rn = float(weather_data.get("rn", "0"))
+                except ValueError:
+                    rn = 0.0
+            realtime_rain = rn > 0
+
+            # 3) 예보
+            if coord.kind in ("home", "work"):
+                region_parts = region_parts_from_address(address_map.get(coord.kind))
+            else:
+                location = weather_data.get("location") if weather_data else ""
+                region_parts = normalize_location_for_forecast(location)
+
+            forecast_key = find_forecast_key_by_region(region_parts)
+
+            print(f"[UMBRELLA] kind={coord.kind} region_parts={region_parts} forecast_key={forecast_key}")
+            print(f"[UMBRELLA] lat={coord.latitude} lon={coord.longitude} weather_key={weather_key} forecast_key={forecast_key}")
+
+            forecast_rain = False
+            if forecast_key:
+                forecast_raw = redis_client.get(forecast_key)
+                if forecast_raw:
+                    try:
+                        forecast = json.loads(forecast_raw)
+                        forecast_rain = bool(forecast.get("is_raining", False))
+                    except json.JSONDecodeError:
+                        forecast_rain = False
+
+            umbrella_required = realtime_rain or forecast_rain
+            if umbrella_required:
+                overall_umbrella = True
+
+            results.append(UmbrellaTargetResult(
+                latitude=coord.latitude,
+                longitude=coord.longitude,
+                station_id=station_id,
+                weather_key=weather_key,
+                forecast_key=forecast_key,
+                umbrella_required=umbrella_required,
+            ))
+
+        return UmbrellaMatchResponse(targets=results, umbrella_required=overall_umbrella)
+    except Exception as e:
+        print(f"우산 매칭 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"우산 매칭 중 오류: {e}")
+
+# =========================
+# 1. 체감온도 (BOM Apparent Temperature)
+# =========================
+def apparent_temperature(t, rh, wind):
+    """
+    t   : 기온 (°C)
+    rh  : 상대습도 (%)
+    wind: 풍속 (m/s)
+    """
+    e = rh / 100 * 6.105 * math.exp(17.27 * t / (237.7 + t))
+    return t + 0.33 * e - 0.70 * wind - 4.00
+
+
+# =========================
+# 2. 체감온도 → 필요 CLO 매핑 (휴리스틱)
+# =========================
+def required_clo(at):
+    if at >= 28: return 0.4
+    elif at >= 20: return 0.6
+    elif at >= 12: return 1.0
+    elif at >= 5: return 1.4
+    elif at >= 0: return 1.9
+    else: return 2.5
+
+
+# =========================
+# 3. 카테고리 분류
+# =========================
+TOPS = [
+    "T-shirt",
+    "Short-sleeve knit shirt",
+    "Short-sleeve dress shirt",
+    "Long sleeve shirt (thin)",
+    "Long sleeve shirt (thick)",
+    "Long-sleeve dress shirt",
+    "Long-sleeve flannel shirt",
+    "Long-sleeve sweat shirt",
+]
+
+BOTTOMS = [
+    "Short shorts",
+    "Walking shorts",
+    "Thin trousers",
+    "Thick trousers",
+    "Sweatpants",
+]
+
+OUTERS = [
+    "Single-breasted coat (thin)",
+    "Single-breasted coat (thick)",
+    "Double-breasted coat (thin)",
+    "Double-breasted coat (thick)",
+]
+
+def items_with_category(items):
+    result = []
+    for item in items:
+        if item in TOPS:
+            result.append({"category": "상의", "name": KOR.get(item, item)})
+        elif item in BOTTOMS:
+            result.append({"category": "하의", "name": KOR.get(item, item)})
+        elif item in OUTERS:
+            result.append({"category": "아우터", "name": KOR.get(item, item)})
+        else:
+            result.append({"category": "기타", "name": KOR.get(item, item)})
+    return result
+
+# =========================
+# 4. 영어 → 한국어 변환
+# =========================
+KOR = {
+    "T-shirt": "반팔 티셔츠",
+    "Short-sleeve knit shirt": "반팔 니트 셔츠",
+    "Short-sleeve dress shirt": "반팔 드레스 셔츠",
+    "Long sleeve shirt (thin)": "얇은 긴팔 셔츠",
+    "Long sleeve shirt (thick)": "두꺼운 긴팔 셔츠",
+    "Long-sleeve dress shirt": "긴팔 드레스 셔츠",
+    "Long-sleeve flannel shirt": "긴팔 플란넬 셔츠",
+    "Long-sleeve sweat shirt": "긴팔 맨투맨",
+
+    "Short shorts": "짧은 반바지",
+    "Walking shorts": "워킹 쇼츠",
+    "Thin trousers": "얇은 바지",
+    "Thick trousers": "두꺼운 바지",
+    "Sweatpants": "츄리닝 바지",
+
+    "Single-breasted coat (thin)": "얇은 싱글 코트",
+    "Single-breasted coat (thick)": "두꺼운 싱글 코트",
+    "Double-breasted coat (thin)": "얇은 더블 코트",
+    "Double-breasted coat (thick)": "두꺼운 더블 코트",
+}
+
+
+def to_korean(items):
+    return [KOR.get(x, x) for x in items]
+
+
+# =========================
+# 5. CLO 조합 추천
+# =========================
+def best_outfit(target):
+    combos = []
+
+    for t in TOPS:
+        for b in BOTTOMS:
+
+            clo_tb = clo_individual_garments[t] + clo_individual_garments[b]
+
+            combos.append(
+                ([t, b], clo_tb)
+            )
+
+            for o in OUTERS:
+                clo_total = clo_tb + clo_individual_garments[o]
+                combos.append(
+                    ([t, b, o], clo_total)
+                )
+
+    return min(combos, key=lambda x: abs(x[1] - target))
+
+
+# =========================
+# 6. 메인 함수
+# =========================
+def recommend_outfit(t, rh, wind):
+    at = apparent_temperature(t, rh, wind)
+    target = required_clo(at)
+
+    items, clo = best_outfit(target)
+
+    return {
+        "temp_c": t,
+        "humidity": rh,
+        "wind_speed": wind,
+        "apparent_temp_c": round(at, 1),
+        "target_clo": round(target, 2),
+        "recommended_clo": round(clo, 2),
+        "items_en": items,
+        "items_ko": to_korean(items),
+    }
 
 if __name__ == "__main__":
     import uvicorn

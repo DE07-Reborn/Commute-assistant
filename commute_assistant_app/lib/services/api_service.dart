@@ -150,6 +150,35 @@ class ApiService {
     }
   }
 
+  /// 우산 필요 여부 매칭
+  Future<Map<String, dynamic>?> postUmbrellaMatch(int? userId, List<Map<String, dynamic>> coordinates) async {
+    try {
+      final url = Uri.parse('$baseUrl/api/v1/umbrella/match');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'user_id': userId,
+          'coordinates': coordinates,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } else {
+        try {
+          final errorData = json.decode(response.body) as Map<String, dynamic>;
+          throw Exception(errorData['detail'] ?? '요청 실패');
+        } catch (_) {
+          throw Exception('요청 실패: ${response.statusCode}');
+        }
+      }
+    } catch (e) {
+      print('우산 매칭 API 오류: $e');
+      rethrow;
+    }
+  }
+
   /// 출근 경로 상태 조회
   Future<Map<String, dynamic>?> getRouteState(int userId) async {
     return await get('/api/v1/route?user_id=$userId');

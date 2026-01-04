@@ -42,6 +42,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String _currentGreeting = '';
   bool _maskRequired = false;
   String _lastMaskKey = '';
+  bool _umbrellaRequired = false;
+  String _lastUmbrellaKey = '';
   Map<String, dynamic>? _routeState;
   bool _isRouteStateLoading = false;
   String? _routeStateError;
@@ -224,6 +226,60 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       print('마스크 상태 조회 오류: $e');
+    }
+  }
+
+  Future<void> _updateUmbrellaStateIfNeeded(AuthProvider authProvider) async {
+    final coordinates = <Map<String, dynamic>>[];
+
+    try {
+      final currentPosition = await _locationService.getCurrentPosition();
+      if (currentPosition != null) {
+        coordinates.add({
+          'latitude': currentPosition.latitude,
+          'longitude': currentPosition.longitude,
+          'kind': 'current',
+        });
+      }
+    } catch (e) {
+      print('현재 위치 조회 오류: $e');
+    }
+
+    if (authProvider.homeLatitude != null && authProvider.homeLongitude != null) {
+      coordinates.add({
+        'latitude': authProvider.homeLatitude!,
+        'longitude': authProvider.homeLongitude!,
+        'kind': 'home',
+      });
+    }
+
+    if (authProvider.workLatitude != null && authProvider.workLongitude != null) {
+      coordinates.add({
+        'latitude': authProvider.workLatitude!,
+        'longitude': authProvider.workLongitude!,
+        'kind': 'work',
+      });
+    }
+
+    if (coordinates.isEmpty) {
+      coordinates.add({'latitude': 37.5172, 'longitude': 127.0473, 'kind': 'current',});
+    }
+
+    final key = coordinates.map((c) => '${c['latitude']},${c['longitude']}').join('|');
+    if (key == _lastUmbrellaKey) return;
+    _lastUmbrellaKey = key;
+
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      final resp = await api.postUmbrellaMatch(authProvider.userId, coordinates);
+      final umbrella = resp != null && resp['umbrella_required'] == true;
+      if (mounted) {
+        setState(() {
+          _umbrellaRequired = umbrella;
+        });
+      }
+    } catch (e) {
+      print('우산 상태 조회 오류: $e');
     }
   }
 
@@ -699,6 +755,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     final authProvider = context.read<AuthProvider>();
                     _updateMaskStateIfNeeded(weatherProvider, authProvider);
+                    _updateUmbrellaStateIfNeeded(authProvider);
                   });
 
                   return Padding(
@@ -746,43 +803,62 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(height: 16),
                             // 온도 및 날씨 상태
                             Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
                                 _getWeatherIcon(weather.condition, weather.weatherCategory, 48),
                                 const SizedBox(width: 12),
                                 Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        '${weather.temperature == 0 ? '0' : weather.temperature.toStringAsFixed(0)}°',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 36,
-                                          fontWeight: FontWeight.bold,
-                                          height: 1,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(top: 20),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '${weather.temperature == 0 ? '0' : weather.temperature.toStringAsFixed(0)}°',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 36,
+                                            fontWeight: FontWeight.bold,
+                                            height: 1,
+                                          ),
                                         ),
-                                      ),
-                                      Text(
-                                        weather.description,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
+                                        Text(
+                                          weather.description,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
-                                // 마스크 이미지 (오른쪽 끝)
-                                Opacity(
-                                  opacity: _maskRequired ? 1.0 : 0.35,
-                                  child: Image.asset(
-                                    'assets/images/mask.png',
-                                    width: 40,
-                                    height: 40,
-                                    color: Colors.white,
-                                    colorBlendMode: BlendMode.modulate,
-                                  ),
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Opacity(
+                                      opacity: _umbrellaRequired ? 1.0 : 0.35,
+                                      child: Image.asset(
+                                        'assets/images/umbrella.png',
+                                        width: 40,
+                                        height: 40,
+                                        color: Colors.white,
+                                        colorBlendMode: BlendMode.modulate,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Opacity(
+                                      opacity: _maskRequired ? 1.0 : 0.35,
+                                      child: Image.asset(
+                                        'assets/images/mask.png',
+                                        width: 40,
+                                        height: 40,
+                                        color: Colors.white,
+                                        colorBlendMode: BlendMode.modulate,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
