@@ -10,6 +10,7 @@ import '../providers/saved_location_provider.dart';
 import '../providers/recent_search_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
 import '../models/saved_location.dart';
 import '../models/recent_search.dart';
 import '../widgets/address_autocomplete_field.dart';
@@ -47,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int? _routeStateUserId;
   DateTime? _lastRouteStateFetch;
   Timer? _minuteTicker;
+  String? _lastScheduledDepartAt;
 
   @override
   void initState() {
@@ -140,6 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _routeStateError = null;
         _lastRouteStateFetch = DateTime.now();
       });
+      await _rescheduleNotificationsIfNeeded(data);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -153,6 +156,18 @@ class _HomeScreenState extends State<HomeScreen> {
         _isRouteStateLoading = false;
       });
     }
+  }
+
+  Future<void> _rescheduleNotificationsIfNeeded(Map<String, dynamic>? routeState) async {
+    if (routeState == null) return;
+    final departAtRaw = routeState['depart_at']?.toString();
+    if (departAtRaw == null || departAtRaw.isEmpty) return;
+    if (departAtRaw == _lastScheduledDepartAt) return;
+    final departAt = DateTime.tryParse(departAtRaw);
+    if (departAt == null) return;
+    _lastScheduledDepartAt = departAtRaw;
+    final notificationService = context.read<NotificationService>();
+    await notificationService.scheduleCommuteNotifications(departAt: departAt);
   }
 
 
