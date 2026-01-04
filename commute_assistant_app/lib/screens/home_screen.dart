@@ -960,45 +960,53 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
               // 오늘의 추천
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '오늘의 추천 ✨',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                              ),
+              Consumer<AuthProvider>(
+                builder: (context, authProvider, _) {
+                  if (!authProvider.isLoggedIn) {
+                    return const SizedBox.shrink();
+                  }
+                  return Column(
+                    children: [
+                      const SizedBox(height: 24),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  '오늘의 추천 ✨',
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
+                                      ),
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const RecommendationTabScreen(),
+                                      ),
+                                    );
+                                  },
+                                  child: const Text('더보기'),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            const RecommendationTabScreen(isCompact: true),
+                          ],
                         ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const RecommendationTabScreen(),
-                              ),
-                            );
-                          },
-                          child: const Text('더보기'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    const RecommendationTabScreen(isCompact: true),
-                  ],
-                ),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  );
+                },
               ),
-              const SizedBox(height: 24),
               // 저장된 장소 또는 출근 경로
               Consumer<AuthProvider>(
                 builder: (context, authProvider, _) {
