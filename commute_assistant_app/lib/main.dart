@@ -51,11 +51,11 @@ class _MyAppState extends State<MyApp> {
 
   String _getApiBaseUrl() {
     if (kIsWeb) {
-      return 'http://localhost:8000';
+      return 'http://3.36.6.147:8000';
     }
     return defaultTargetPlatform == TargetPlatform.android
-        ? 'http://10.0.2.2:8000'
-        : 'http://localhost:8000';
+        ? 'http://3.36.6.147:8000'
+        : 'http://3.36.6.147:8000';
   }
   
   static const String _fallbackGoogleMapsApiKey =

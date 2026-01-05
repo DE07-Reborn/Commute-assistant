@@ -5,9 +5,8 @@ class WeatherInfo {
   final String condition; // 'sunny', 'rainy', 'cloudy', 'snowy'
   final int humidity;
   final double windSpeed;
-  final String description;
+  final int description;
   final String? location;
-  final String? uvIndex; // '낮음', '보통', '높음'
   final String? weatherCategory; // 날씨 카테고리 (예: '맑음', '비', '눈', '흐림')
 
   WeatherInfo({
@@ -17,7 +16,6 @@ class WeatherInfo {
     required this.windSpeed,
     required this.description,
     this.location,
-    this.uvIndex,
     this.weatherCategory,
   });
 }
