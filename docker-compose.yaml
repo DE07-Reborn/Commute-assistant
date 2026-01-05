@@ -271,8 +271,10 @@ services:
       POSTGRES_DB: ${APP_DB_NAME}
       POSTGRES_HOST: ${APP_DB_HOST}
       POSTGRES_PORT: ${APP_DB_PORT}
+      AIR_STATIONS_CSV: /app/dataset/air_stations.csv
     volumes:
       - ./fastapi:/app
+      - ./dataset:/app/dataset
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -317,7 +319,7 @@ services:
       TZ: Asia/Seoul
       PGTZ: Asia/Seoul
     healthcheck:
-      test: ["CMD", "pg_isready", "-U"]
+      test: ["CMD", "pg_isready", "-U", "${APP_DB_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5

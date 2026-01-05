@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/weather_provider.dart';
 import '../models/recommendation_detail.dart';
+import '../models/weather_info.dart';
 
 class RecommendationTabScreen extends StatefulWidget {
   final bool isCompact;
@@ -334,18 +335,23 @@ class _RecommendationTabScreenState extends State<RecommendationTabScreen>
     }
   }
 
-  Widget _buildClothingRecommendations(recommendation, weather) {
-    final recommendations = _getClothingRecommendations(weather.condition);
+  Widget _buildClothingRecommendations(
+    Recommendation recommendation,
+    WeatherInfo weather,
+  ) {
+    final List<RecommendationDetail> items = recommendation.clothingItems.isNotEmpty
+      ? recommendation.clothingItems
+      : _getClothingRecommendations(weather.condition);
 
     if (widget.isCompact) {
       return ListView.builder(
         scrollDirection: Axis.horizontal,
-        itemCount: recommendations.length,
+        itemCount: items.length,
         itemBuilder: (context, index) {
-          final rec = recommendations[index];
+          final rec = items[index];
           return Container(
             width: 140,
-            margin: EdgeInsets.only(right: index < recommendations.length - 1 ? 12 : 0),
+            margin: EdgeInsets.only(right: index < items.length - 1 ? 12 : 0),
             child: Card(
               elevation: 1,
               shape: RoundedRectangleBorder(
@@ -381,7 +387,7 @@ class _RecommendationTabScreenState extends State<RecommendationTabScreen>
       );
     }
 
-    if (recommendations.isEmpty) {
+    if (items.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(40),
@@ -391,7 +397,7 @@ class _RecommendationTabScreenState extends State<RecommendationTabScreen>
     }
 
     return Column(
-      children: recommendations.map((rec) {
+      children: items.map((rec) {
         return Card(
           elevation: 2,
           margin: const EdgeInsets.only(bottom: 12),

@@ -1,5 +1,6 @@
 import '../models/weather_info.dart';
 import 'weather_service_api.dart';
+import '../models/recommendation_detail.dart';
 
 /// FastAPI를 통해 추천 정보를 가져오는 서비스
 class RecommendationServiceApi {
@@ -74,12 +75,27 @@ class RecommendationServiceApi {
       
       // 옷차림 추천 (날씨 조건에 따라)
       final clothing = _getClothingRecommendation(weatherCondition);
+      final clothingItems = <RecommendationDetail>[];
+      if (unifiedData['clothing'] is List) {
+        for (final item in (unifiedData['clothing'] as List)) {
+          if (item is Map) {
+            clothingItems.add(
+              RecommendationDetail(
+                category: item['category']?.toString() ?? 'etc',
+                name: item['name']?.toString() ?? '',
+                description: '',
+              ),
+            );
+          }
+        }
+      }
       
       return Recommendation(
         clothing: clothing,
         books: books.isNotEmpty ? books : _getDefaultBooks(weatherCondition),
         music: music.isNotEmpty ? music : _getDefaultMusic(weatherCondition),
         bookLinks: bookLinks.isNotEmpty ? bookLinks : null,
+        clothingItems: clothingItems,
       );
     } catch (e) {
       print('추천 정보 가져오기 오류: $e');
@@ -132,6 +148,7 @@ class RecommendationServiceApi {
       books: _getDefaultBooks(condition),
       music: _getDefaultMusic(condition),
       bookLinks: null,  // 기본 추천은 링크 없음
+      clothingItems: const [],
     );
   }
 }

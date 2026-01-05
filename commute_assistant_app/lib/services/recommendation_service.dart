@@ -34,6 +34,7 @@ class RecommendationService {
               : music is List
                   ? music.map((e) => e.toString()).toList()
                   : [music.toString()],
+          clothingItems: const [],
         );
       } catch (e) {
         print('Error getting recommendations from external DB: $e');
@@ -53,24 +54,28 @@ class RecommendationService {
           clothing: '우산과 레인코트를 준비하세요',
           books: ['비 오는 날 읽기 좋은 소설', '실내에서 즐기는 에세이'],
           music: ['비 오는 날 플레이리스트', '잔잔한 재즈'],
+          clothingItems: const [],
         );
       case 'snowy':
         return Recommendation(
           clothing: '따뜻한 코트와 장갑을 착용하세요',
           books: ['겨울 이야기', '따뜻한 감성의 에세이'],
           music: ['겨울 감성 플레이리스트', '따뜻한 발라드'],
+          clothingItems: const [],
         );
       case 'cloudy':
         return Recommendation(
           clothing: '가벼운 겉옷을 준비하세요',
           books: ['편안하게 읽는 소설', '인문학 서적'],
           music: ['편안한 인디 음악', '어쿠스틱 플레이리스트'],
+          clothingItems: const [],
         );
       default: // sunny
         return Recommendation(
           clothing: '가볍고 시원한 옷을 입으세요',
           books: ['밝은 날 읽기 좋은 소설', '여행 에세이'],
           music: ['밝은 팝 음악', '신나는 댄스 음악'],
+          clothingItems: const [],
         );
     }
   }
