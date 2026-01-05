@@ -876,11 +876,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 _buildWeatherDetail(
                                   Icons.air,
                                   '바람 ${weather.windSpeed.toStringAsFixed(0)}m/s',
-                                ),
-                                _buildWeatherDetail(
-                                  Icons.wb_sunny,
-                                  '자외선 ${weather.uvIndex ?? "보통"}',
-                                ),
+                                )
                               ],
                             ),
                           ],
