@@ -165,7 +165,7 @@ class _RecommendationTabScreenState extends State<RecommendationTabScreen>
                                 ),
                               ),
                               Text(
-                                weather.description,
+                                int.parse(weather.description).toString(),
                                 style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 14,
