@@ -173,7 +173,7 @@ class _RecommendationTabScreenState extends State<RecommendationTabScreen>
                                   ),
                                 ),
                                 Text(
-                                  weather.description.toString(),
+                                  weather.condition,
                                   style: const TextStyle(
                                     color: Colors.white70,
                                     fontSize: 14,
@@ -725,7 +725,7 @@ class _RecommendationTabScreenState extends State<RecommendationTabScreen>
           ),
         );
       }).toList(),
-    );
+    );s
   }
 
   List<RecommendationDetail> _getClothingRecommendations(String condition) {
